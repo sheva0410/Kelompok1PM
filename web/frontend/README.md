@@ -80,6 +80,7 @@ web/frontend/
 - Jika browser tidak mendukung WebGL, denah otomatis memakai versi 2D.
 - Animasi denyut dan kepulan bau dimatikan bila pengguna memilih "kurangi gerakan" di sistem operasinya.
 - Posisi node mengikuti `pos_x` dan `pos_y` (meter) dari halaman Kelola node.
+- Hemat daya: denah tidak digambar ulang saat diam. Saat diputar 60 fps; animasi node Sedang/Tinggi 30 fps (HP 20 fps); putaran otomatis berhenti setelah 25 detik; render berhenti saat denah tidak terlihat atau tab disembunyikan. Di HP dan perangkat lemah (≤ 4 inti CPU atau ≤ 4 GB RAM) bayangan dimatikan dan resolusi maksimal 1,5×.
 
 ## Menghubungkan ke backend
 

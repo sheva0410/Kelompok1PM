@@ -31,6 +31,10 @@
 
   var reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
   var coarse = window.matchMedia && matchMedia("(pointer: coarse)").matches;
+  // HP atau perangkat lemah: tanpa bayangan, resolusi lebih rendah, animasi latar 20 fps
+  var lowPower = coarse || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory != null && navigator.deviceMemory <= 4);
+  var AMBIENT_FPS = lowPower ? 20 : 30;
+  var AUTO_ROTATE_MS = 25000; // putaran otomatis berhenti sendiri supaya tidak menguras baterai
   function X(m) { return m - W / 2; }
   function Z(m) { return m - D / 2; }
   function mat(color, extra) { return new T.MeshStandardMaterial(Object.assign({ color: color, roughness: 0.85, metalness: 0.05 }, extra || {})); }
@@ -210,13 +214,13 @@
   function create(host, opt) {
     opt = opt || {};
     var renderer;
-    try { renderer = new T.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" }); }
+    try { renderer = new T.WebGLRenderer({ antialias: !lowPower, alpha: true, powerPreference: lowPower ? "low-power" : "high-performance" }); }
     catch (e) { return null; }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.5 : 2));
     renderer.outputEncoding = T.sRGBEncoding;
     renderer.toneMapping = T.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !lowPower;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
 
     host.innerHTML = "";
@@ -235,7 +239,7 @@
 
     scene.add(new T.HemisphereLight(0xcfe2ff, 0x1a2433, 0.75));
     var sun = new T.DirectionalLight(0xfff1dc, 1.25);
-    sun.position.set(14, 24, 10); sun.castShadow = true;
+    sun.position.set(14, 24, 10); sun.castShadow = !lowPower;
     sun.shadow.mapSize.set(2048, 2048);
     var sc = sun.shadow.camera; sc.left = -22; sc.right = 22; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 70;
     sun.shadow.bias = -0.0005;
@@ -269,6 +273,7 @@
     function update(nodes, sel) {
       current = nodes; if (sel !== undefined) selected = sel;
       nodes.forEach(function (n) { if (nodeObjs[n.id]) { paintNode(nodeObjs[n.id], n, selected); paintLabel(n, selected); } });
+      wake();
     }
     makeLabels(current);
     update(current, selected);
@@ -283,8 +288,11 @@
     controls.minPolarAngle = 0.35; controls.maxPolarAngle = 1.32;
     controls.rotateSpeed = 0.7;
     controls.autoRotate = !!opt.autoRotate && !reduceMotion; controls.autoRotateSpeed = 0.55;
+    var autoUntil = 0, interacting = false;
     if (coarse) { controls.touches = { ONE: -1, TWO: T.TOUCH.DOLLY_ROTATE }; renderer.domElement.style.touchAction = "pan-y"; }
-    controls.addEventListener("start", function () { controls.autoRotate = false; stage.classList.add("used"); });
+    controls.addEventListener("start", function () { controls.autoRotate = false; interacting = true; stage.classList.add("used"); wake(); });
+    controls.addEventListener("end", function () { interacting = false; wake(); });
+    controls.addEventListener("change", function () { dirty = true; });
 
     var baseDist = 40;
     function fitDistance() {
@@ -302,6 +310,7 @@
       var v = camera.position.clone().sub(controls.target), len = T.MathUtils.clamp(v.length() * (dir < 0 ? 0.82 : 1.22), 9, 90);
       camera.position.copy(controls.target).add(v.setLength(len));
       stage.classList.add("used");
+      wake();
     }
     tools.addEventListener("click", function (e) { var b = e.target.closest("[data-z]"); if (b) zoom(+b.getAttribute("data-z")); });
 
@@ -326,13 +335,15 @@
     });
 
     // ukuran
-    var sized = false;
+    var sized = false, lastW = 0, lastH = 0;
     function resize() {
       var w = stage.clientWidth, h = stage.clientHeight;
-      if (!w || !h) return;
+      if (!w || !h || (w === lastW && h === lastH)) return; // abaikan jika ukuran tidak berubah
+      lastW = w; lastH = h;
       renderer.setSize(w, h, false);
       camera.aspect = w / h; camera.updateProjectionMatrix();
       if (!sized || !stage.classList.contains("used")) { baseDist = fitDistance(); placeCamera(baseDist); sized = true; }
+      wake();
     }
     var ro = window.ResizeObserver ? new ResizeObserver(resize) : null;
     if (ro) ro.observe(stage); else window.addEventListener("resize", resize);
@@ -351,27 +362,52 @@
       });
     }
 
-    // loop render, berhenti saat tidak terlihat
-    var visible = true, alive = true, raf = 0, clock = new T.Clock();
-    var io = window.IntersectionObserver ? new IntersectionObserver(function (en) { visible = en[0].isIntersecting; }) : null;
-    if (io) io.observe(stage);
-    function frame() {
-      if (!alive) return;
+    /*
+     * Loop render hemat daya:
+     * - diputar / sisa gerak damping: 60 fps
+     * - animasi latar (node Sedang/Tinggi, putaran otomatis): 30 fps, HP 20 fps
+     * - diam: loop berhenti total, bangun lagi saat ada interaksi, data baru, atau ukuran berubah
+     * - tidak terlihat di layar atau tab disembunyikan: berhenti
+     */
+    var visible = true, alive = true, running = false, dirty = true, raf = 0, lastRender = 0, clock = new T.Clock();
+    function hasAmbient() {
+      if (reduceMotion) return false;
+      for (var id in nodeObjs) { var o = nodeObjs[id]; if (o.active && (o.level === 1 || o.level === 2)) return true; }
+      return false;
+    }
+    function wake() {
+      dirty = true;
+      if (!running && alive && visible && !document.hidden) { running = true; raf = requestAnimationFrame(frame); }
+    }
+    function frame(now) {
+      if (!alive || !visible || document.hidden) { running = false; return; }
+      if (controls.autoRotate) {
+        if (!autoUntil) autoUntil = now + AUTO_ROTATE_MS;
+        else if (now > autoUntil) controls.autoRotate = false;
+      }
+      var moving = controls.update(), spinning = controls.autoRotate;
+      var fps = interacting || (moving && !spinning) ? 60 : (hasAmbient() || spinning) ? AMBIENT_FPS : 0;
+      if (!fps && !dirty) { running = false; return; }
       raf = requestAnimationFrame(frame);
-      if (!visible || document.hidden) return;
+      if (!dirty && fps < 60 && now - lastRender < 1000 / fps - 2) return;
+      lastRender = now; dirty = false;
       var t = clock.getElapsedTime();
       for (var id in nodeObjs) animateNode(nodeObjs[id], t);
-      controls.update();
       renderer.render(scene, camera);
       placeLabels();
     }
-    frame();
+    var io = window.IntersectionObserver ? new IntersectionObserver(function (en) { visible = en[0].isIntersecting; if (visible) wake(); }) : null;
+    if (io) io.observe(stage);
+    function onVis() { if (!document.hidden) wake(); }
+    document.addEventListener("visibilitychange", onVis);
+    wake();
 
     return {
       update: update,
       destroy: function () {
         alive = false; cancelAnimationFrame(raf);
         if (ro) ro.disconnect(); if (io) io.disconnect();
+        document.removeEventListener("visibilitychange", onVis);
         controls.dispose(); renderer.dispose();
         scene.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(function (m) { m.dispose(); }); });
         host.innerHTML = "";
