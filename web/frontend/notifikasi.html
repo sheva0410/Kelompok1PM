@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Notifikasi · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<header id="topbar"></header>
+<section class="deck slim"><div class="wrap deck-inner">
+  <div class="page-head"><p class="eyebrow">TPS Terminal Rajabasa</p><h1>Riwayat notifikasi</h1><p class="muted">Peringatan yang dikirim otomatis lewat n8n saat node berstatus Tinggi 3 kali berturut-turut atau berhenti mengirim data.</p></div>
+  <div class="stat-row" id="stats"></div>
+</div></section>
+<main class="wrap page">
+  <section class="panel">
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Jenis notifikasi" id="typeSeg">
+        <button type="button" data-type="semua" aria-pressed="true">Semua</button>
+        <button type="button" data-type="tinggi" aria-pressed="false">Tingkat tinggi</button>
+        <button type="button" data-type="offline" aria-pressed="false">Node tidak aktif</button>
+      </div>
+      <div class="seg" role="group" aria-label="Rentang waktu" id="hourSeg">
+        <button type="button" data-h="24" aria-pressed="true">24 jam</button>
+        <button type="button" data-h="72" aria-pressed="false">3 hari</button>
+        <button type="button" data-h="168" aria-pressed="false">7 hari</button>
+      </div>
+      <label class="sr" for="nodeSel">Saring node</label>
+      <select id="nodeSel" class="select-sm"><option value="">Semua node</option></select>
+      <div class="end"><button class="btn" type="button" id="btnReload">Muat ulang</button></div>
+    </div>
+    <div id="notifTable"></div>
+    <div class="pb pager" id="pager"></div>
+  </section>
+</main>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/notifikasi.js"></script>
+</body>
+</html>

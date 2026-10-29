@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daftar · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body class="auth">
+<div class="auth-split">
+  <section class="deck auth-visual" aria-label="SMART-TPS">
+    <a class="brand" href="index.html" id="brand"><b>SMART-TPS</b></a>
+    <div class="auth-stage">
+      <div class="auth-copy">
+        <h2>Ikut menjaga udara di sekitar TPS.</h2>
+        <p>Dengan akun warga, Anda bisa melihat kondisi bau di tiap titik pemantau dan mengirim laporan langsung ke pengelola TPS.</p>
+      </div>
+      <div id="map"></div>
+    </div>
+    <div class="auth-stats">
+      <div><b>3</b><span>tingkat bau: rendah, sedang, tinggi</span></div>
+      <div><b>1 menit</b><span>untuk mengirim laporan</span></div>
+    </div>
+  </section>
+  <main class="auth-panel">
+    <section class="auth-card" aria-labelledby="ttl">
+      <h1 id="ttl">Daftar sebagai warga</h1>
+      <p class="auth-lead">Akun warga dipakai untuk melihat kondisi bau dan mengirim laporan.</p>
+      <form id="regForm" class="auth-form" novalidate>
+        <div class="fld">
+          <label for="username">Username</label>
+          <input id="username" type="text" autocomplete="username" required>
+          <p class="err" id="err-username" hidden></p>
+        </div>
+        <div class="fld">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" required>
+          <p class="err" id="err-email" hidden></p>
+        </div>
+        <div class="fld">
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="new-password" required>
+          <p class="hint">Minimal 8 karakter.</p>
+          <p class="err" id="err-password" hidden></p>
+        </div>
+        <button class="btn primary big" type="submit" id="btnReg">Daftar</button>
+      </form>
+      <div class="auth-done" id="regDone" hidden>
+        <p><b>Akun berhasil dibuat.</b> Silakan masuk dengan username dan password tadi.</p>
+        <a class="btn primary big" href="index.html">Ke halaman masuk</a>
+      </div>
+      <p class="auth-alt">Sudah punya akun? <a href="index.html">Masuk</a></p>
+    </section>
+  </main>
+</div>
+<script src="js/vendor/three.min.js"></script>
+<script src="js/vendor/OrbitControls.js"></script>
+<script src="js/scene3d.js"></script>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/auth-visual.js"></script>
+<script src="js/pages/register.js"></script>
+</body>
+</html>

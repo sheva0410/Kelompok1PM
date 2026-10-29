@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kelola node · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<header id="topbar"></header>
+<section class="deck slim"><div class="wrap deck-inner"><div class="page-head"><p class="eyebrow">TPS Terminal Rajabasa</p><h1>Kelola node</h1><p class="muted">Daftarkan node, atur posisinya di denah, ukur nilai udara bersih (R0), dan kelola akun.</p></div></div></section>
+<main class="wrap page">
+  <div class="grid2">
+    <section class="panel">
+      <div class="ph"><h2>Posisi node pada denah</h2><div class="end" id="posBtns"></div></div>
+      <div id="denahAdmin"></div>
+      <p class="note pb" id="posHint"></p>
+    </section>
+    <div class="stack">
+      <section class="panel">
+        <div class="ph"><h2>Daftarkan node baru</h2></div>
+        <form class="form" id="nodeForm" novalidate>
+          <div class="form-grid">
+            <div class="fld"><label for="nId">ID node</label><input type="text" id="nId" autocomplete="off" required><p class="err" id="err-nId" hidden></p></div>
+            <div class="fld span2"><label for="nNama">Lokasi</label><input type="text" id="nNama" placeholder="Contoh: Sisi utara, dekat pintu samping" required><p class="err" id="err-nNama" hidden></p></div>
+            <div class="fld"><label for="nX">Posisi x (m)</label><input type="text" inputmode="decimal" id="nX" value="13"><p class="err" id="err-nX" hidden></p></div>
+            <div class="fld"><label for="nY">Posisi y (m)</label><input type="text" inputmode="decimal" id="nY" value="7,5"><p class="err" id="err-nY" hidden></p></div>
+          </div>
+          <p class="hint">x dari 0 sampai 26 m (barat ke timur), y dari 0 sampai 15 m (utara ke selatan). Posisi bisa digeser lagi di denah. Node baru tampil sebagai "Belum ada data" sampai perangkatnya mengirim data.</p>
+          <button class="btn primary" type="submit" id="btnAddNode">Daftarkan node</button>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="ph"><h2>Data contoh</h2><span class="sub">khusus mockup</span></div>
+        <div class="pb stack-sm">
+          <div class="fld"><label for="scenSel">Skenario data sensor</label><select id="scenSel"></select></div>
+          <p class="hint">Mengganti skenario membuat ulang data sensor dan laporan contoh. Akun tetap disimpan.</p>
+          <div class="row-btns"><button class="btn" type="button" id="btnScen">Terapkan skenario</button><button class="btn danger" type="button" id="btnReset">Reset semua data contoh</button></div>
+          <div id="resetConfirm"></div>
+          <label class="check"><input type="checkbox" id="simErr"> <span><b>Simulasikan server tidak merespons</b><small>Untuk menguji tampilan error dan tombol "Coba lagi". Berlaku sampai tab ditutup atau dimatikan dari pita merah di atas.</small></span></label>
+        </div>
+      </section>
+    </div>
+  </div>
+  <section class="panel">
+    <div class="ph"><h2>Node dan nilai udara bersih (R0)</h2><span class="sub">kΩ · diukur setelah pemanasan 24–48 jam</span></div>
+    <div class="pb"><div class="tbl-wrap" id="r0Table"></div></div>
+  </section>
+  <section class="panel">
+    <div class="ph"><h2>Akun</h2><div class="end"><button class="btn" type="button" id="btnShowAcc">Tambah akun</button></div></div>
+    <form class="form bordered" id="accForm" novalidate hidden>
+      <div class="form-grid">
+        <div class="fld"><label for="aUser">Username</label><input type="text" id="aUser" autocomplete="off" required><p class="err" id="err-aUser" hidden></p></div>
+        <div class="fld"><label for="aEmail">Email</label><input type="email" id="aEmail" autocomplete="off" required><p class="err" id="err-aEmail" hidden></p></div>
+        <div class="fld"><label for="aPass">Password awal</label><input type="password" id="aPass" autocomplete="new-password" required><p class="err" id="err-aPass" hidden></p></div>
+        <div class="fld"><label for="aRole">Peran</label><select id="aRole"><option value="Pengelola">Pengelola TPS</option><option value="Admin">Administrator</option></select></div>
+      </div>
+      <div class="row-btns"><button class="btn primary" type="submit">Simpan akun</button><button class="btn" type="button" id="btnHideAcc">Batal</button></div>
+    </form>
+    <div class="tbl-wrap flush" id="accTable"></div>
+  </section>
+</main>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/admin.js"></script>
+</body>
+</html>

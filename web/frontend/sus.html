@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kuesioner SUS · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<header id="topbar"></header>
+<section class="deck slim"><div class="wrap deck-inner">
+  <div class="page-head"><p class="eyebrow">Uji penerimaan pengguna (UAT)</p><h1>Kuesioner kegunaan sistem</h1><p class="muted">System Usability Scale, 10 pernyataan. Isi setelah Anda selesai mencoba dashboard web atau aplikasi mobile SMART-TPS.</p></div>
+  <div class="seg dark-seg" role="tablist" aria-label="Bagian" id="susTabs" hidden>
+    <button type="button" role="tab" data-tab="rekap" aria-selected="true" aria-pressed="true">Rekap hasil</button>
+    <button type="button" role="tab" data-tab="isi" aria-selected="false" aria-pressed="false">Isi kuesioner</button>
+  </div>
+</div></section>
+<main class="wrap page">
+  <section id="paneIsi">
+    <form class="panel sus-form" id="susForm" novalidate>
+      <div class="pb form-grid sus-meta">
+        <div class="fld"><label for="sKode">Nama / kode partisipan</label><input type="text" id="sKode" placeholder="Contoh: P01" autocomplete="off"><p class="err" id="err-kode" hidden></p></div>
+        <div class="fld"><label for="sPeran">Peran saat pengujian</label>
+          <select id="sPeran"><option value="">Pilih peran</option><option>Pengelola TPS</option><option>Petugas dinas</option><option>Warga sekitar TPS</option><option>Pekerja / pemulung TPS</option><option>Lainnya</option></select>
+          <p class="err" id="err-peran" hidden></p></div>
+        <div class="fld"><label for="sPlat">Sistem yang dicoba</label><select id="sPlat"><option>Dashboard web</option><option>Aplikasi mobile</option><option>Keduanya</option></select></div>
+        <div class="fld"><label>Tanggal pengisian</label><p class="static mono" id="sDate"></p></div>
+      </div>
+      <div class="sus-guide">
+        <p>Pilih angka yang paling sesuai dengan pendapat Anda. <b>1 = sangat tidak setuju</b>, <b>5 = sangat setuju</b>. Tidak ada jawaban benar atau salah.</p>
+        <span class="mono" id="susProgress">0 dari 10 terjawab</span>
+      </div>
+      <ol class="sus-list" id="susList"></ol>
+      <div class="pb sus-submit">
+        <p class="err" id="err-answers" hidden></p>
+        <button class="btn primary big" type="submit" id="btnSus">Kirim jawaban</button>
+      </div>
+    </form>
+    <div class="panel done" id="susDone" hidden></div>
+  </section>
+  <section id="paneRekap" hidden>
+    <div class="stat-row light" id="susStats"></div>
+    <section class="panel">
+      <div class="ph"><h2>Jawaban per partisipan</h2><span class="sub">rumus Lampiran F · target rata-rata ≥ 68 (NFR-06)</span><div class="end"><button class="btn primary" type="button" id="btnSusCsv">Ekspor CSV</button></div></div>
+      <div id="susTable"></div>
+    </section>
+    <section class="panel">
+      <div class="ph"><h2>Rata-rata per pernyataan</h2><span class="sub">skor kontribusi 0–4 · makin tinggi makin baik</span></div>
+      <div class="pb" id="susItems"></div>
+    </section>
+  </section>
+</main>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/sus.js"></script>
+</body>
+</html>

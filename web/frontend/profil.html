@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Profil · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<header id="topbar"></header>
+<section class="deck slim"><div class="wrap deck-inner">
+  <div class="profile-head" id="profHead"></div>
+</div></section>
+<main class="wrap page">
+  <div class="grid2">
+    <div class="stack">
+      <section class="panel">
+        <div class="ph"><h2>Ganti password</h2></div>
+        <form class="form" id="pwForm" novalidate>
+          <div class="fld"><label for="pOld">Password lama</label><input type="password" id="pOld" autocomplete="current-password"><p class="err" id="err-pOld" hidden></p></div>
+          <div class="fld"><label for="pNew">Password baru</label><input type="password" id="pNew" autocomplete="new-password"><p class="hint">Minimal 8 karakter dan berbeda dari password lama.</p><p class="err" id="err-pNew" hidden></p></div>
+          <div class="fld"><label for="pNew2">Ulangi password baru</label><input type="password" id="pNew2" autocomplete="new-password"><p class="err" id="err-pNew2" hidden></p></div>
+          <label class="check-inline"><input type="checkbox" id="pShow"> Tampilkan password</label>
+          <button class="btn primary" type="submit" id="btnPw">Simpan password baru</button>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="ph"><h2>Email</h2></div>
+        <form class="form" id="mailForm" novalidate>
+          <div class="fld"><label for="pMail">Alamat email</label><input type="email" id="pMail" autocomplete="email"><p class="err" id="err-pMail" hidden></p></div>
+          <button class="btn primary" type="submit" id="btnMail">Simpan email</button>
+        </form>
+      </section>
+    </div>
+    <div class="stack">
+      <section class="panel">
+        <div class="ph"><h2>Tampilan</h2></div>
+        <div class="pb stack-sm">
+          <div class="fld"><span class="lbl-strong">Tema</span>
+            <div class="seg" role="group" aria-label="Tema" id="themeSeg">
+              <button type="button" data-th="system">Ikuti perangkat</button>
+              <button type="button" data-th="light">Terang</button>
+              <button type="button" data-th="dark">Gelap</button>
+            </div>
+          </div>
+          <p class="hint">Pilihan tema tersimpan di browser ini. Denah 3D tetap memakai latar gelap supaya warna tingkat bau mudah dibedakan.</p>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="ph"><h2>Panduan</h2></div>
+        <div class="pb stack-sm">
+          <p style="margin:0">Panduan singkat muncul sekali saat pertama kali masuk. Putar ulang jika ingin melihat penjelasan bagian-bagian dashboard lagi.</p>
+          <div class="row-btns"><button class="btn" type="button" id="btnTour">Tampilkan panduan lagi</button></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/profil.js"></script>
+</body>
+</html>

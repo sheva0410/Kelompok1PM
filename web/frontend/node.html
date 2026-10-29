@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Detail node · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<header id="topbar"></header>
+<section class="deck">
+  <div class="wrap deck-inner">
+    <nav class="crumbs" aria-label="Navigasi"><a href="dashboard.html">← Dashboard</a><div class="node-tabs" id="nodeTabs"></div></nav>
+    <div class="node-hero">
+      <aside class="glass node-info" id="nodeInfo"><p class="loading">Memuat data node…</p></aside>
+      <div id="map"></div>
+    </div>
+  </div>
+</section>
+<main class="wrap page">
+  <section class="panel">
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Jenis grafik" id="tabSeg">
+        <button type="button" data-tab="level" aria-pressed="true">Tingkat bau</button>
+        <button type="button" data-tab="mq" aria-pressed="false">Sensor MQ</button>
+        <button type="button" data-tab="env" aria-pressed="false">Suhu &amp; kelembapan</button>
+      </div>
+      <div class="seg" role="group" aria-label="Rentang waktu" id="rangeSeg">
+        <button type="button" data-range="60" aria-pressed="false">1 jam</button>
+        <button type="button" data-range="360" aria-pressed="true">6 jam</button>
+        <button type="button" data-range="1440" aria-pressed="false">24 jam</button>
+        <button type="button" data-range="custom" aria-pressed="false">Pilih tanggal</button>
+      </div>
+      <span class="range-label mono" id="rangeLabel"></span>
+    </div>
+    <form class="range-form" id="rangeForm" novalidate hidden>
+      <div class="fld"><label for="rFrom">Dari</label><input type="datetime-local" id="rFrom" required></div>
+      <div class="fld"><label for="rTo">Sampai</label><input type="datetime-local" id="rTo" required></div>
+      <div class="range-act"><button class="btn primary" type="submit">Terapkan</button><button class="btn" type="button" id="rCancel">Batal</button></div>
+      <p class="hint">Rentang maksimal 7 hari. Ekspor CSV mengikuti rentang ini.</p>
+      <p class="err" id="rErr" role="alert" hidden></p>
+    </form>
+    <div class="pb" id="chartArea"></div>
+  </section>
+  <section class="panel">
+    <div class="ph"><h2>Histori pembacaan</h2><span class="sub" id="histSub"></span><div class="end" id="histActions"></div></div>
+    <div id="histConfirm"></div>
+    <div class="pb"><div class="tbl-wrap" id="histTable"></div>
+      <div class="pager" id="pager"></div>
+    </div>
+  </section>
+</main>
+<script src="js/vendor/three.min.js"></script>
+<script src="js/vendor/OrbitControls.js"></script>
+<script src="js/scene3d.js"></script>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/node.js"></script>
+</body>
+</html>

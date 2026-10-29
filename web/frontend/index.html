@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Masuk · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body class="auth">
+<div class="auth-split">
+  <section class="deck auth-visual" aria-label="SMART-TPS">
+    <a class="brand" href="index.html" id="brand"><b>SMART-TPS</b></a>
+    <div class="auth-stage">
+      <div class="auth-copy">
+        <h2>Bau sampah terpantau dari empat titik, setiap menit.</h2>
+        <p>Sembilan sensor gas di tiap node membaca udara di sekitar TPS Terminal Rajabasa. Pengelola melihat titik mana yang perlu ditangani, warga tahu kapan sebaiknya menjauh.</p>
+      </div>
+      <div id="map"></div>
+    </div>
+    <div class="auth-stats">
+      <div><b>4</b><span>node pemantau</span></div>
+      <div><b>9</b><span>sensor gas per node</span></div>
+      <div><b>60 dtk</b><span>interval pembacaan</span></div>
+    </div>
+  </section>
+  <main class="auth-panel">
+    <section class="auth-card" aria-labelledby="ttl">
+      <h1 id="ttl">Masuk</h1>
+      <form id="loginForm" class="auth-form" novalidate>
+        <div class="fld">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" autocomplete="username" required>
+        </div>
+        <div class="fld">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <p class="err" id="loginErr" role="alert" hidden></p>
+        <button class="btn primary big" type="submit" id="btnLogin">Masuk</button>
+      </form>
+      <p class="auth-alt">Belum punya akun? <a href="register.html">Daftar sebagai warga</a></p>
+      <div class="demo-acc">
+        <p>Akun contoh untuk mockup (klik untuk mengisi):</p>
+        <div class="demo-list">
+          <button type="button" class="btn" data-u="pengelola" data-p="pengelola123">pengelola</button>
+          <button type="button" class="btn" data-u="admin" data-p="admin123">admin</button>
+          <button type="button" class="btn" data-u="warga" data-p="warga123">warga</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="js/vendor/three.min.js"></script>
+<script src="js/vendor/OrbitControls.js"></script>
+<script src="js/scene3d.js"></script>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/auth-visual.js"></script>
+<script src="js/pages/login.js"></script>
+</body>
+</html>

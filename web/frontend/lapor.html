@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laporkan bau · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<header id="topbar"></header>
+<section class="deck slim"><div class="wrap deck-inner"><div class="page-head"><p class="eyebrow">TPS Terminal Rajabasa</p><h1>Laporkan bau</h1><p class="muted">Laporan Anda dikirim ke pengelola TPS Terminal Rajabasa.</p></div></div></section>
+<main class="wrap page">
+  <div class="grid2">
+    <section class="panel">
+      <form class="form" id="repForm" novalidate>
+        <fieldset class="fld">
+          <legend>Seberapa bau yang Anda rasakan?</legend>
+          <div class="choices" id="choices"></div>
+          <p class="err" id="errFelt" hidden>Pilih salah satu tingkat bau.</p>
+        </fieldset>
+        <div class="fld">
+          <label for="repNode">Di dekat titik mana?</label>
+          <select id="repNode"><option value="">Tidak tahu</option></select>
+        </div>
+        <div class="fld">
+          <label for="repText">Ceritakan singkat</label>
+          <p class="hint">Contoh: dari mana bau tercium, sejak kapan, dan apa yang terlihat.</p>
+          <textarea id="repText" maxlength="500"></textarea>
+          <p class="err" id="errText" hidden>Tulis minimal 10 karakter.</p>
+        </div>
+        <div class="fld">
+          <label for="repFoto">Foto (opsional)</label>
+          <input type="file" id="repFoto" accept="image/*">
+          <img id="fotoPrev" class="foto-prev" alt="Pratinjau foto" hidden>
+        </div>
+        <button type="submit" class="btn primary big" id="btnSend">Kirim laporan</button>
+      </form>
+      <div class="done" id="done" hidden></div>
+    </section>
+    <section class="panel">
+      <div class="ph"><h2>Laporan saya</h2></div>
+      <ul class="rlist" id="myReports"><li class="empty">Memuat…</li></ul>
+    </section>
+  </div>
+</main>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/lapor.js"></script>
+</body>
+</html>

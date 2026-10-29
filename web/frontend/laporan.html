@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laporan warga · SMART-TPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem("smarttps_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<header id="topbar"></header>
+<section class="deck slim"><div class="wrap deck-inner"><div class="page-head"><p class="eyebrow">TPS Terminal Rajabasa</p><h1>Laporan warga</h1><p class="muted">Tinjau keluhan bau dari warga, lalu ubah statusnya.</p></div></div></section>
+<main class="wrap page">
+  <section class="panel">
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Saring status" id="filterSeg"></div>
+      <div class="end"><button class="btn" type="button" id="btnReload">Muat ulang</button></div>
+    </div>
+    <div id="reportTable"></div>
+    <div class="pb pager" id="pager"></div>
+  </section>
+</main>
+<dialog id="photoDlg" class="photo-dlg">
+  <form method="dialog"><button class="btn" type="submit">Tutup</button></form>
+  <img id="photoImg" alt="Foto laporan warga">
+</dialog>
+<script src="js/mock-api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/laporan.js"></script>
+</body>
+</html>
