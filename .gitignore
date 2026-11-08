@@ -1,0 +1,34 @@
+# Rahasia: kata sandi DB, SECRET_KEY, akun MQTT, URL webhook n8n
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+secrets.h
+secrets.json
+credentials.json
+
+# Firmware: SSID dan kata sandi Wi-Fi
+**/wifi_config.h
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+*.log
+
+# Editor dan sistem operasi
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

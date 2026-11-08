@@ -6,7 +6,7 @@ Acuan rancangan baru: proposal Tabel 5.2 (antarmuka), Tabel 5.3 (skema data), FR
 
 A. YANG KAMI PERTAHANKAN
 
-1. Struktur Django: proyek backend_tpa dan app monitor (models, serializers, views, urls, admin).
+1. Struktur Django: proyek (backend_tpa, diganti nama menjadi smart_tps) dan app monitor (models, serializers, views, urls, admin).
 2. Model User custom (AbstractUser) dengan kolom role, dan login berbasis Token (rest_framework.authtoken).
 3. Endpoint login POST /api/auth/login/ dan profil GET /api/auth/profile/.
 4. Laporan warga dengan unggahan gambar (model Report, folder media/laporan_img).

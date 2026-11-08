@@ -117,10 +117,11 @@ Nilai rahasia disimpan di file `.env` yang tidak ikut di-*commit*. Jangan tulis 
 
 | Variabel | Fungsi | Keterangan |
 | --- | --- | --- |
-| `DJANGO_SECRET_KEY` | *Secret key* Django | Dari kode lama |
+| `DJANGO_SECRET_KEY` | *Secret key* Django. Wajib bila `DEBUG=0` | Dari kode lama |
 | `DEBUG` | `0` untuk *server*, `1` untuk lokal | Dari kode lama |
 | `ALLOWED_HOSTS` | *Host* yang diizinkan, dipisah koma | Dari kode lama |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Koneksi PostgreSQL | Dari kode lama |
+| `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` | Origin *dashboard web* dan aplikasi, dipisah koma | Baru |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Koneksi PostgreSQL. `DB_HOST` kosong berarti SQLite lokal | Dari kode lama |
 | `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS` | Koneksi *broker* untuk *listener* | Baru |
 | `N8N_WEBHOOK_URL` | URL *webhook* n8n | Baru |
 
