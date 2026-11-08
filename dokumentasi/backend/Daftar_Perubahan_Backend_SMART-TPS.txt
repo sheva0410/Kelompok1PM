@@ -1,0 +1,121 @@
+DAFTAR PERUBAHAN BACKEND SMART-TPS
+Issue #10 [BE] Analisis dan dokumentasi arsitektur backend
+Kode lama: TPS_Project-main/Web/smart_tpa_project (Django 5 + DRF + PostgreSQL + paho-mqtt)
+Acuan rancangan baru: proposal Tabel 5.2 (antarmuka), Tabel 5.3 (skema data), FR/NFR, backlog GitHub
+
+
+A. YANG KAMI PERTAHANKAN
+
+1. Struktur Django: proyek (backend_tpa, diganti nama menjadi smart_tps) dan app monitor (models, serializers, views, urls, admin).
+2. Model User custom (AbstractUser) dengan kolom role, dan login berbasis Token (rest_framework.authtoken).
+3. Endpoint login POST /api/auth/login/ dan profil GET /api/auth/profile/.
+4. Laporan warga dengan unggahan gambar (model Report, folder media/laporan_img).
+5. Export riwayat ke CSV.
+6. Listener sebagai management command (python manage.py run_listener).
+7. Pemuatan model AI dengan joblib (scaler, kmeans, label map) di folder monitor/ml_models.
+8. Docker Compose dengan empat service: db (postgres:15), web (gunicorn), listener, nginx (port 8001).
+9. Django admin untuk mengelola data.
+
+
+B. YANG KAMI UBAH
+
+1. Sensor
+   Lama: 6 sensor (mq2, mq3, mq4, mq8, mq9, mq135), tipe IntegerField.
+   Baru: 9 sensor (mq2, mq3, mq4, mq5, mq6, mq8, mq9, mq135, mq136), tipe desimal berisi Rs/R0,
+   ditambah suhu dan kelembapan dari DHT22. (Issue #11)
+
+2. Label tingkat bau
+   Lama: Aman, Sedang, Bahaya.
+   Baru: Normal, Sedang, Tinggi (backlog #17) ATAU rendah, sedang, tinggi (proposal Tabel 5.3).
+   TIM PERLU MEMILIH SATU sebelum membuat kolom level.
+
+3. Topik MQTT
+   Lama: smart-tpa/sensor/data, QoS 0.
+   Baru: smarttps/{node}/data dengan QoS 1, ditambah LWT smarttps/{node}/status. (Issue #12)
+
+4. Broker MQTT
+   Lama: broker.hivemq.com (publik, tanpa login).
+   Baru: broker dengan nama pengguna dan kata sandi per node. (Issue #30, NFR-04)
+
+5. Payload MQTT
+   Lama: sensor_id, sensors_raw, sensors_cal, ai_cluster, ai_status. Listener tidak memvalidasi isi.
+   Baru: node, seq, waktu, 9 nilai sensor, suhu, kelembapan (format final mengikuti issue #5).
+   Listener menolak payload yang tidak valid. (Issue #12)
+
+6. Waktu pembacaan
+   Lama: timestamp = waktu server menerima pesan (auto_now_add).
+   Baru: waktu dari alat (sinkron NTP) dan nomor urut seq, kunci unik (node_id, seq).
+
+7. Model AI
+   Lama: joblib 6 fitur dari data2.csv (repo priya212000).
+   Baru: K-Means k=3 dari TS1-TS4, 11 fitur (9 sensor MQ, suhu, kelembapan), versi model tersimpan di kolom model_ver. (Issue #26)
+
+8. Simulator
+   Lama: simulate_sensor.py mengirim angka acak.
+   Baru: simulator mengirim data TS5 untuk N1-N4 dengan format payload baru. (Issue #13)
+
+9. Keamanan API
+   - Register: kunci field role agar pendaftar tidak bisa memilih Pemerintah sendiri.
+   - Spot/node: hanya admin yang boleh menambah, mengubah, dan menghapus.
+   - Laporan: warga hanya melihat laporannya sendiri; pengelola melihat dan mengubah status semua laporan.
+   - Riwayat sensor dan export CSV: wajib login.
+
+10. settings.py
+    Lama: host DB, kata sandi DB, SECRET_KEY, dan DEBUG tertulis langsung di kode.
+    Baru: semua nilai itu dibaca dari environment variable (os.environ).
+
+11. Endpoint riwayat
+    Lama: GET /api/sensor-logs/?spot_id= mengirim semua baris tanpa paginasi.
+    Baru: GET /api/nodes/{id}/readings?from=&to= dengan paginasi.
+
+12. Export CSV
+    Lama: 6 kolom sensor, tanpa filter waktu.
+    Baru: 9 sensor, suhu, kelembapan, tingkat bau, filter from dan to.
+
+13. auto_cleanup
+    Lama: menghapus SensorLog yang lebih tua dari 1 hari.
+    Baru: tinjau ulang atau hapus, karena fitur riwayat, tren, dan export butuh data lama.
+
+
+C. YANG KAMI TAMBAHKAN
+
+1. Kolom node: pos_x, pos_y (posisi di denah), aktif. (Tabel 5.3, FR-08, FR-13)
+2. Tabel R0_CONFIG: node_id, sensor, nilai_r0, diukur_pada. (FR-14)
+3. Tabel PREDICTION: reading_id, level, model_ver, waktu. (Tabel 5.3)
+4. Tabel NOTIFICATION: node_id, pred_id, jenis (tinggi/offline), pesan, waktu, status_kirim. (FR-10)
+5. Kolom laporan warga: tingkat_dirasakan, status (baru/diproses/selesai), handled_by. (FR-11)
+6. GET /api/status: status TPS gabungan (tingkat tertinggi di antara node aktif) dan tingkat tiap node. (FR-06, issue #27)
+7. GET /api/nodes/{id}/trend: naik, stabil, atau turun dari kemiringan 15 prediksi terakhir, ambang +-0,05. (FR-07, issue #27)
+8. POST/PUT /api/nodes dan /api/nodes/{id}/r0: admin mendaftarkan node dan menyimpan R0. (Tabel 5.2)
+9. PATCH /api/reports: pengelola mengubah status laporan. (Tabel 5.2)
+10. Deteksi node offline: node tanpa data lebih dari 180 detik atau dengan LWT offline. (NFR-05, issue #28)
+11. Webhook n8n: server memanggil n8n saat satu node mendapat 3 prediksi tinggi berturut-turut atau saat node offline. (FR-10, TC-11, issue #29)
+12. Listener multi-node: subscribe smarttps/+/data, simpan data N1-N4 sesuai node. (FR-04, issue #12)
+
+
+D. MASALAH DI KODE LAMA (JANGAN TERBAWA KE KODE BARU)
+
+1. Firmware kode sensor/kode-sensor.txt tidak mengirim sensor_id. Listener membuang semua pesannya
+   (run_listener.py baris 63-64).
+2. simulate_sensor.py menaruh mq2 dan kawan-kawan di level atas JSON, sedangkan listener membaca sensors_cal.
+   Listener menyimpan nilai 0 untuk semua sensor.
+3. run_listener.py memanggil subscribe() sekali setelah connect(). Pindahkan ke callback on_connect
+   agar listener berlangganan lagi setelah tersambung ulang.
+4. settings.py mengabaikan DB_HOST, DEBUG, dan DJANGO_SECRET_KEY dari docker-compose.yml.
+   Container web dan listener mencoba DB di 127.0.0.1, bukan di service db.
+5. settings.py memaksa DEBUG = True.
+6. POST /api/auth/register/ menerima field role. Siapa pun bisa mendaftar sebagai Pemerintah.
+7. SpotViewSet memakai IsAuthenticatedOrReadOnly. Warga yang login bisa menambah, mengubah, dan menghapus spot.
+   Kelas IsPemerintahOrReadOnly sudah ada di views.py tetapi tidak dipakai.
+8. ReportViewSet mengizinkan semua user yang login melihat dan menghapus laporan siapa pun.
+9. Halaman detail spot memanggil /api/sensor-logs/ tiap 3 detik dan menerima semua baris.
+10. docker-compose.yml tidak menjalankan migrate dan collectstatic.
+11. kode-sensor.txt menyimpan SSID dan kata sandi Wi-Fi, settings.py dan docker-compose.yml menyimpan
+    kata sandi DB. Jangan salin nilai rahasia ini ke repo Kelompok1PM.
+
+
+E. KEPUTUSAN YANG MASIH MENUNGGU TIM
+
+1. Nama tingkat bau: Normal/Sedang/Tinggi atau rendah/sedang/tinggi.
+2. Format final payload MQTT (issue #5).
+3. Nama tabel di kode: tetap Spot/SensorLog atau ganti menjadi Node/Reading sesuai Tabel 5.3.
