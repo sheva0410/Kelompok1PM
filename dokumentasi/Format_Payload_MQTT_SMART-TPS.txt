@@ -1,0 +1,63 @@
+FORMAT PAYLOAD MQTT SMART-TPS
+Issue #5 [ALL] - Status: DISETUJUI HW, BE, AI, dan FE (10 November 2026).
+
+
+1. CONTOH PESAN
+
+{
+  "node": "N1",
+  "seq": 128,
+  "ts": "2026-11-05T08:30:00+07:00",
+  "rsr0": {
+    "mq2": 0.91, "mq3": 0.88, "mq4": 0.95, "mq5": 0.90, "mq6": 0.93,
+    "mq8": 0.97, "mq9": 0.89, "mq135": 0.84, "mq136": 0.86
+  },
+  "suhu": 31.2,
+  "kelembapan": 74.5
+}
+
+
+2. ISI PESAN
+
+   Field        Tipe              Satuan   Keterangan
+   node         teks              -        "N1" sampai "N4", sama dengan topik
+   seq          bilangan bulat    -        Nomor urut, naik 1 tiap kiriman
+   ts           teks / null       -        Waktu NTP (ISO 8601). null = server pakai waktu terima
+   rsr0.mq2 ... angka             Rs/R0    9 sensor MQ, urutan: mq2, mq3, mq4, mq5, mq6,
+   rsr0.mq136                              mq8, mq9, mq135, mq136. 3 angka di belakang koma
+   suhu         angka / null      °C       DHT22, 1 angka di belakang koma
+   kelembapan   angka / null      %RH      DHT22, 1 angka di belakang koma
+
+
+3. ATURAN KOMUNIKASI
+
+   Topik      smarttps/{node}/data, contoh smarttps/N1/data
+   Interval   60 detik
+   QoS        1
+   Broker     HiveMQ Cloud, port 8883 (TLS), satu akun per node
+
+
+4. NILAI KOSONG ATAU ERROR
+
+   DHT22 gagal baca     kirim null, pesan tetap disimpan
+   Sensor MQ gagal      kirim null, server menolak pesan dan mencatatnya di log
+   NTP belum sinkron    "ts": null
+   Pesan ganda          (node, seq) yang sama diabaikan
+   Pesan salah format   ditolak dan dicatat di log (bukan JSON, node tidak terdaftar,
+                        nilai bukan angka)
+
+
+5. BELUM DIPUTUSKAN
+
+   - seq kembali ke 0 saat ESP32 restart, sehingga pesan dianggap ganda.
+     Usulan BE: firmware menyimpan seq di NVS.
+   - Pemetaan kanal multiplexer ke sensor MQ (diisi HW).
+
+
+6. PERSETUJUAN
+
+   Role  Nama                    Setuju   Tanggal
+   HW                            ya       10-11-2026
+   BE    Naufal Alfathan Hafizh  ya       10-11-2026
+   AI                            ya       10-11-2026
+   FE                            ya       10-11-2026

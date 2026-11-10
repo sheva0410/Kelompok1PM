@@ -22,7 +22,8 @@ Daftar perbedaan dengan kode lama ada di [Daftar_Perubahan_Backend_SMART-TPS.txt
 | --- | --- |
 | *Framework* | Django 5, Django REST Framework (*token authentication*) |
 | *Database* | PostgreSQL 15 |
-| MQTT *client* | paho-mqtt, dijalankan sebagai *management command* `run_listener` |
+| MQTT *client* | paho-mqtt 2.2, dijalankan sebagai *management command* `run_listener` |
+| MQTT *broker* | HiveMQ Cloud (*free tier*, TLS port 8883) |
 | Model AI | K-Means k=3 dan *scaler* (scikit-learn), dimuat dengan joblib |
 | *Deployment* | Docker Compose: `db`, `web` (gunicorn), `listener`, `nginx` |
 | Notifikasi | *Webhook* ke n8n |
@@ -48,7 +49,7 @@ Tiap *node* mengirim **11 data sensor** per pembacaan. Kesebelas data ini disimp
 
 *Listener* berlangganan `smarttps/+/data` dan `smarttps/+/status`. Tiap *node* login ke *broker* dengan nama pengguna dan kata sandi sendiri.
 
-Contoh *payload*. Format final menunggu issue #5, dan angka di bawah hanya ilustrasi:
+Format *payload* sudah disetujui di issue #5 ([Format_Payload_MQTT_SMART-TPS.txt](../../dokumentasi/Format_Payload_MQTT_SMART-TPS.txt)). Angka di bawah hanya ilustrasi:
 
 ```json
 {
@@ -122,10 +123,11 @@ Nilai rahasia disimpan di file `.env` yang tidak ikut di-*commit*. Jangan tulis 
 | `ALLOWED_HOSTS` | *Host* yang diizinkan, dipisah koma | Dari kode lama |
 | `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` | Origin *dashboard web* dan aplikasi, dipisah koma | Baru |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Koneksi PostgreSQL. `DB_HOST` kosong berarti SQLite lokal | Dari kode lama |
-| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS` | Koneksi *broker* untuk *listener* | Baru |
+| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS` | Koneksi *broker* untuk *listener*. Port HiveMQ Cloud 8883 | Baru (#12) |
+| `MQTT_TLS` | `1` untuk TLS (wajib di HiveMQ Cloud), `0` untuk *broker* lokal tanpa TLS | Baru (#12) |
 | `N8N_WEBHOOK_URL` | URL *webhook* n8n | Baru |
 
-Nama variabel yang ditandai "Baru" masih usulan. Variabel itu ditetapkan saat issue #12 dan #29 dikerjakan.
+Variabel MQTT sudah ditetapkan di issue #12. `N8N_WEBHOOK_URL` masih usulan dan ditetapkan di issue #29.
 
 ## Menjalankan
 
@@ -138,6 +140,15 @@ docker compose exec web python manage.py migrate
 docker compose exec web python manage.py createsuperuser
 ```
 
+Menjalankan *listener* tanpa Docker:
+
+```bash
+pip install -r requirements.txt
+python manage.py run_listener
+```
+
+Pesan yang ditolak dicatat sebagai `WARNING` beserta alasannya. Pesan dengan `seq` yang sudah tersimpan untuk *node* yang sama diabaikan sebagai duplikat.
+
 Uji tanpa alat dilakukan dengan simulator yang mengirim data TS5 untuk N1-N4 (issue #13).
 
 ## Keputusan yang masih terbuka
@@ -145,11 +156,10 @@ Uji tanpa alat dilakukan dengan simulator yang mengirim data TS5 untuk N1-N4 (is
 | No | Keputusan | Pilihan | Terkait |
 | --- | --- | --- | --- |
 | 1 | Nama tingkat bau | rendah/sedang/tinggi (proposal, README utama) atau Normal/Sedang/Tinggi (issue AI) | #11, #26 |
-| 2 | Format final *payload* | Contoh di atas, termasuk `suhu` dan `kelembapan` | #5 |
-| 3 | `seq` kembali ke 0 saat ESP32 *restart* | Firmware menyimpan `seq` di NVS, atau *payload* ditambah `boot_id` | #5, #11 |
-| 4 | Data pelapor dan foto laporan warga | Warga anonim, atau warga punya akun (tambah peran warga) | #11 |
-| 5 | DHT22 gagal membaca | Pembacaan ditolak, atau disimpan tanpa prediksi | #12, #26 |
-| 6 | Penyedia *cloud* | Belum dipilih | #37 |
+| 2 | `seq` kembali ke 0 saat ESP32 *restart* | Firmware menyimpan `seq` di NVS, atau *payload* ditambah `boot_id` | #5, #11 |
+| 3 | Data pelapor dan foto laporan warga | Warga anonim, atau warga punya akun (tambah peran warga) | #11 |
+| 4 | Prediksi saat DHT22 gagal membaca (data tetap disimpan dengan `null`, sesuai #5) | Tidak diberi prediksi, atau diprediksi dengan nilai pengganti | #26 |
+| 5 | Penyedia *cloud* | Belum dipilih | #37 |
 
 ## Issue backend
 

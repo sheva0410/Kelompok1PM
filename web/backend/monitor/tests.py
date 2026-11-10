@@ -1,11 +1,13 @@
 import csv
 import io
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from django.test import TestCase
 from rest_framework.authtoken.models import Token
 
+from .management.commands.run_listener import process_message
 from .models import SENSORS, Node, Reading, User
 
 WIB = ZoneInfo('Asia/Jakarta')
@@ -49,6 +51,63 @@ class ExportCSVTest(TestCase):
         self.assertEqual(self.client.get('/api/export').status_code, 401)
         self.auth('warga')
         self.assertEqual(self.client.get('/api/export').status_code, 403)
+
+
+def pesan(node='N1', seq=1, **ubah):
+    data = {'node': node, 'seq': seq, 'ts': '2026-11-05T08:30:00+07:00',
+            'rsr0': {s: 0.9 for s in SENSORS}, 'suhu': 31.2, 'kelembapan': 74.5}
+    data.update(ubah)
+    return json.dumps(data).encode()
+
+
+def rsr0_dengan(**ubah):
+    return {**{s: 0.9 for s in SENSORS}, **ubah}
+
+
+class ListenerTest(TestCase):
+    def setUp(self):
+        for n in ('N1', 'N2', 'N3', 'N4'):
+            Node.objects.create(node_id=n, nama=n)
+        Node.objects.create(node_id='N5', nama='Cadangan', aktif=False)
+
+    def test_100_pesan_valid_tersimpan_per_node(self):
+        for i in range(100):
+            n = f'N{i % 4 + 1}'
+            self.assertIsNotNone(process_message(f'smarttps/{n}/data', pesan(n, seq=i)))
+        self.assertEqual(Reading.objects.count(), 100)
+        self.assertEqual(Reading.objects.filter(node_id='N3').count(), 25)
+        r = Reading.objects.get(node_id='N1', seq=0)
+        self.assertEqual((r.mq136, r.suhu, r.kelembapan), (0.9, 31.2, 74.5))
+        self.assertEqual(r.waktu, datetime(2026, 11, 5, 8, 30, tzinfo=WIB))
+
+    def test_pesan_tidak_valid_ditolak_dan_dicatat(self):
+        salah = [
+            ('smarttps/N1/data', b'{rusak'),
+            ('smarttps/N1/data', b'[1, 2]'),
+            ('smarttps/N9/data', pesan('N9')),
+            ('smarttps/N5/data', pesan('N5')),
+            ('smarttps/N1/data', pesan('N2')),
+            ('smarttps/N1/data', pesan(seq='1')),
+            ('smarttps/N1/data', pesan(seq=-1)),
+            ('smarttps/N1/data', pesan(rsr0=rsr0_dengan(mq2='abc'))),
+            ('smarttps/N1/data', pesan(rsr0=rsr0_dengan(mq3=True))),
+            ('smarttps/N1/data', pesan(rsr0=rsr0_dengan(mq4=float('nan')))),
+            ('smarttps/N1/data', pesan(rsr0={s: 0.9 for s in SENSORS[:-1]})),
+            ('smarttps/N1/data', pesan(suhu='31')),
+            ('smarttps/N1/data', pesan(ts='kemarin')),
+        ]
+        with self.assertLogs('monitor.listener', 'WARNING') as log:
+            for topic, payload in salah:
+                self.assertIsNone(process_message(topic, payload), payload)
+        self.assertEqual(len(log.output), len(salah))
+        self.assertEqual(Reading.objects.count(), 0)
+
+    def test_duplikat_dan_nilai_opsional(self):
+        process_message('smarttps/N1/data', pesan(seq=7))
+        self.assertIsNone(process_message('smarttps/N1/data', pesan(seq=7)))
+        r = process_message('smarttps/N2/data', pesan('N2', seq=7, ts=None, suhu=None, kelembapan=None))
+        self.assertIsNone(r.suhu)
+        self.assertEqual(Reading.objects.count(), 2)
 
 
 class AdminTest(TestCase):
