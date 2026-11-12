@@ -23,9 +23,9 @@ Daftar perbedaan dengan kode lama ada di [Daftar_Perubahan_Backend_SMART-TPS.txt
 | *Framework* | Django 5, Django REST Framework (*token authentication*) |
 | *Database* | PostgreSQL 15 |
 | MQTT *client* | paho-mqtt 2.2, dijalankan sebagai *management command* `run_listener` |
-| MQTT *broker* | Mosquitto (Docker). Di Cloudflare Containers lewat WebSocket (`wss`, port 443), lokal lewat TCP |
+| MQTT *broker* | Mosquitto (Docker Compose), TLS port 8883 |
 | Model AI | K-Means k=3 dan *scaler* (scikit-learn), dimuat dengan joblib |
-| *Deployment* | Docker Compose: `db`, `web` (gunicorn), `listener`, `nginx` |
+| *Deployment* | Docker Compose di VPS Azure for Students: `mosquitto`, `db`, `web` (gunicorn), `listener`, `nginx`, `n8n` |
 | Notifikasi | *Webhook* ke n8n |
 
 ## Data sensor
@@ -124,7 +124,7 @@ Nilai rahasia disimpan di file `.env` yang tidak ikut di-*commit*. Jangan tulis 
 | `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` | Origin *dashboard web* dan aplikasi, dipisah koma | Baru |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Koneksi PostgreSQL. `DB_HOST` kosong berarti SQLite lokal | Dari kode lama |
 | `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS` | Koneksi *broker* untuk *listener*. Port bawaan 8883 (`tcp`) atau 443 (`websockets`) | Baru (#12) |
-| `MQTT_TRANSPORT` | `tcp` (bawaan) atau `websockets` untuk *broker* di belakang Cloudflare | Baru |
+| `MQTT_TRANSPORT` | `tcp` (bawaan) atau `websockets` (cadangan bila port 8883 tidak bisa dipakai) | Baru |
 | `MQTT_WS_PATH` | Path WebSocket Mosquitto, bawaan `/mqtt` | Baru |
 | `MQTT_TLS` | `1` untuk TLS atau `wss` (bawaan), `0` untuk *broker* lokal tanpa TLS | Baru (#12) |
 | `N8N_WEBHOOK_URL` | URL *webhook* n8n | Baru |
@@ -151,7 +151,41 @@ python manage.py run_listener
 
 Pesan yang ditolak dicatat sebagai `WARNING` beserta alasannya. Pesan dengan `seq` yang sudah tersimpan untuk *node* yang sama diabaikan sebagai duplikat.
 
-Uji tanpa alat dilakukan dengan simulator yang mengirim data TS5 untuk N1-N4 (issue #13).
+## Simulator
+
+Simulator mengirim dataset TS5 sebagai pesan MQTT dari N1-N4, jadi *listener* bisa diuji tanpa alat. File `TS5.csv` tidak ada di repo. Simpan di komputer, lalu tunjuk dengan `--dataset` atau variabel `SIMULATOR_DATASET`.
+
+Syarat: `MQTT_*` di `.env` terisi (sama dengan *listener*), *listener* sedang berjalan, dan N1-N4 sudah terdaftar di `/admin`.
+
+```bash
+# uji cepat: 1 detik antar siklus
+python manage.py run_simulator --dataset D:/data/TS5.csv --interval 1
+
+# uji normal: 60 detik antar siklus (bawaan)
+python manage.py run_simulator --dataset D:/data/TS5.csv
+
+# 100 pesan (25 siklus x 4 node) lalu berhenti
+python manage.py run_simulator --dataset D:/data/TS5.csv --siklus 25 --interval 0.05
+
+# matikan N3 setelah 10 siklus, untuk uji node offline
+python manage.py run_simulator --dataset D:/data/TS5.csv --mati N3 --mati-setelah 10
+```
+
+| Opsi | Fungsi | Bawaan |
+| --- | --- | --- |
+| `--dataset` | Path `TS5.csv` | `SIMULATOR_DATASET`, atau `TS5.csv` di folder kerja |
+| `--interval` | Detik antar siklus | 60 |
+| `--siklus` | Jumlah siklus, 0 berarti tanpa batas | 0 |
+| `--node` | *Node* yang disimulasikan | N1 N2 N3 N4 |
+| `--mati`, `--mati-setelah` | *Node* yang berhenti mengirim, dan setelah berapa siklus | tidak ada, 5 |
+| `--seq-awal` | Nomor `seq` pertama tiap *node*. Ubah bila `seq` yang sama sudah tersimpan | 1 |
+
+Cara kerja:
+- Kolom dibaca menurut nama (`MQ2`, `MQ135`, `Temperature`, `Humidity`), karena urutan kolom antar file TS berbeda.
+- Tiap *node* mulai dari baris yang berbeda (N1 baris 1, N2 baris 541, dan seterusnya), lalu berputar ke awal bila dataset habis.
+- Setiap siklus tiap *node* mengirim satu baris ke `smarttps/{node}/data` dengan QoS 1, memakai format di `dokumentasi/Format_Payload_MQTT_SMART-TPS.txt`.
+- Nilai dataset dikirim apa adanya pada kunci `rsr0`. Nilai TS5 berkisar 1 sampai 77, bukan rasio Rs/R0 (sekitar 1 atau kurang). Satuannya perlu diselaraskan dengan tim AI dan HW sebelum hasil K-Means (#26) dipercaya.
+- *Node* yang dimatikan hanya berhenti mengirim. Deteksi *offline* dikerjakan di #28.
 
 ## Keputusan yang masih terbuka
 
@@ -161,7 +195,7 @@ Uji tanpa alat dilakukan dengan simulator yang mengirim data TS5 untuk N1-N4 (is
 | 2 | `seq` kembali ke 0 saat ESP32 *restart* | Firmware menyimpan `seq` di NVS, atau *payload* ditambah `boot_id` | #5, #11 |
 | 3 | Data pelapor dan foto laporan warga | Warga anonim, atau warga punya akun (tambah peran warga) | #11 |
 | 4 | Prediksi saat DHT22 gagal membaca (data tetap disimpan dengan `null`, sesuai #5) | Tidak diberi prediksi, atau diprediksi dengan nilai pengganti | #26 |
-| 5 | Penyedia *cloud* | Belum dipilih | #37 |
+| 5 | Ukuran dan *region* VPS Azure for Students | Dipilih: Azure for Students. Ukuran VM dan *region* yang diizinkan perlu dicek | #37 |
 
 ## Issue backend
 

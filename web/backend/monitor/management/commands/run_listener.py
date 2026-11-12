@@ -7,15 +7,14 @@ Format payload mengikuti dokumentasi/Format_Payload_MQTT_SMART-TPS.txt (disetuju
 import json
 import logging
 import math
-import os
 
-import paho.mqtt.client as mqtt
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.db import close_old_connections
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from monitor.models import SENSORS, Node, Reading
+from monitor.mqtt_util import client_dari_env
 
 logger = logging.getLogger('monitor.listener')
 
@@ -128,24 +127,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
-        host = os.environ.get('MQTT_HOST')
-        if not host:
-            raise CommandError('MQTT_HOST belum diisi di .env')
-        # MQTT_TRANSPORT=websockets untuk broker di belakang Cloudflare (hanya HTTP dan WebSocket)
-        transport = os.environ.get('MQTT_TRANSPORT', 'tcp')
-        if transport not in ('tcp', 'websockets'):
-            raise CommandError("MQTT_TRANSPORT harus 'tcp' atau 'websockets'")
-        port = int(os.environ.get('MQTT_PORT', '443' if transport == 'websockets' else '8883'))
-
         # clean_session=False dan client_id tetap: broker menyimpan pesan QoS 1 selama listener terputus
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                             client_id='smarttps-listener', clean_session=False, transport=transport)
-        if transport == 'websockets':
-            client.ws_set_options(path=os.environ.get('MQTT_WS_PATH', '/mqtt'))
-        if os.environ.get('MQTT_USER'):
-            client.username_pw_set(os.environ['MQTT_USER'], os.environ.get('MQTT_PASS'))
-        if os.environ.get('MQTT_TLS', '1') == '1':
-            client.tls_set()  # TLS untuk MQTT (port 8883) atau wss (port 443)
+        client, host, port = client_dari_env('smarttps-listener', clean_session=False)
         client.on_connect = on_connect
         client.on_disconnect = on_disconnect
         client.on_message = on_message

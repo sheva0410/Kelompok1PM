@@ -1,6 +1,8 @@
 import csv
 import io
 import json
+import os
+import tempfile
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -8,6 +10,7 @@ from django.test import TestCase
 from rest_framework.authtoken.models import Token
 
 from .management.commands.run_listener import process_message
+from .management.commands.run_simulator import buat_payload, muat_dataset, node_kirim
 from .models import SENSORS, Node, Reading, User
 
 WIB = ZoneInfo('Asia/Jakarta')
@@ -108,6 +111,40 @@ class ListenerTest(TestCase):
         r = process_message('smarttps/N2/data', pesan('N2', seq=7, ts=None, suhu=None, kelembapan=None))
         self.assertIsNone(r.suhu)
         self.assertEqual(Reading.objects.count(), 2)
+
+
+class SimulatorTest(TestCase):
+    def tulis_csv(self, isi):
+        f = tempfile.NamedTemporaryFile('w', suffix='.csv', delete=False, newline='', encoding='utf-8')
+        f.write(isi)
+        f.close()
+        self.addCleanup(os.remove, f.name)
+        return f.name
+
+    def test_dataset_dibaca_per_nama_kolom(self):
+        # urutan kolom dibalik seperti TS1: Humidity sebelum Temperature
+        kolom = ['Humidity', 'Temperature'] + [s.upper() for s in SENSORS]
+        isi = ','.join(kolom) + '\n' + ','.join(['70.5', '31.2'] + ['1.5'] * 9) + '\n'
+        baris = muat_dataset(self.tulis_csv(isi))[0]
+        self.assertEqual((baris['Temperature'], baris['Humidity']), (31.2, 70.5))
+
+    def test_dataset_tanpa_kolom_sensor_ditolak(self):
+        with self.assertRaises(ValueError):
+            muat_dataset(self.tulis_csv('MQ2,Temperature,Humidity\n1,2,3\n'))
+
+    def test_pesan_simulator_diterima_listener(self):
+        for n in ('N1', 'N2'):
+            Node.objects.create(node_id=n, nama=n)
+        baris = {**{s.upper(): 2.5 for s in SENSORS}, 'Temperature': 31.2, 'Humidity': 74.5}
+        pesan = json.dumps(buat_payload('N2', 9, baris, '2026-11-12T08:00:00+07:00')).encode()
+        r = process_message('smarttps/N2/data', pesan)
+        self.assertEqual((r.node_id, r.seq, r.mq135, r.suhu, r.kelembapan), ('N2', 9, 2.5, 31.2, 74.5))
+
+    def test_node_mati_berhenti_setelah_n_siklus(self):
+        nodes = ['N1', 'N2', 'N3', 'N4']
+        self.assertEqual(node_kirim(nodes, 9, 'N3', 10), nodes)
+        self.assertEqual(node_kirim(nodes, 10, 'N3', 10), ['N1', 'N2', 'N4'])
+        self.assertEqual(node_kirim(nodes, 99, None, 0), nodes)
 
 
 class AdminTest(TestCase):

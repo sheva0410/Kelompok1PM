@@ -34,7 +34,7 @@ Issue #5 [ALL] - Status: DISETUJUI HW, BE, AI, dan FE (10 November 2026).
    Topik      smarttps/{node}/data, contoh smarttps/N1/data
    Interval   60 detik
    QoS        1
-   Broker     HiveMQ Cloud, port 8883 (TLS), satu akun per node
+   Broker     Mosquitto (Docker) di VPS Azure, port 8883 (TLS), satu akun per node
 
 
 4. NILAI KOSONG ATAU ERROR
