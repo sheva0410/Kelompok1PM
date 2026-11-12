@@ -23,7 +23,7 @@ Daftar perbedaan dengan kode lama ada di [Daftar_Perubahan_Backend_SMART-TPS.txt
 | *Framework* | Django 5, Django REST Framework (*token authentication*) |
 | *Database* | PostgreSQL 15 |
 | MQTT *client* | paho-mqtt 2.2, dijalankan sebagai *management command* `run_listener` |
-| MQTT *broker* | HiveMQ Cloud (*free tier*, TLS port 8883) |
+| MQTT *broker* | Mosquitto (Docker). Di Cloudflare Containers lewat WebSocket (`wss`, port 443), lokal lewat TCP |
 | Model AI | K-Means k=3 dan *scaler* (scikit-learn), dimuat dengan joblib |
 | *Deployment* | Docker Compose: `db`, `web` (gunicorn), `listener`, `nginx` |
 | Notifikasi | *Webhook* ke n8n |
@@ -123,8 +123,10 @@ Nilai rahasia disimpan di file `.env` yang tidak ikut di-*commit*. Jangan tulis 
 | `ALLOWED_HOSTS` | *Host* yang diizinkan, dipisah koma | Dari kode lama |
 | `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` | Origin *dashboard web* dan aplikasi, dipisah koma | Baru |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Koneksi PostgreSQL. `DB_HOST` kosong berarti SQLite lokal | Dari kode lama |
-| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS` | Koneksi *broker* untuk *listener*. Port HiveMQ Cloud 8883 | Baru (#12) |
-| `MQTT_TLS` | `1` untuk TLS (wajib di HiveMQ Cloud), `0` untuk *broker* lokal tanpa TLS | Baru (#12) |
+| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS` | Koneksi *broker* untuk *listener*. Port bawaan 8883 (`tcp`) atau 443 (`websockets`) | Baru (#12) |
+| `MQTT_TRANSPORT` | `tcp` (bawaan) atau `websockets` untuk *broker* di belakang Cloudflare | Baru |
+| `MQTT_WS_PATH` | Path WebSocket Mosquitto, bawaan `/mqtt` | Baru |
+| `MQTT_TLS` | `1` untuk TLS atau `wss` (bawaan), `0` untuk *broker* lokal tanpa TLS | Baru (#12) |
 | `N8N_WEBHOOK_URL` | URL *webhook* n8n | Baru |
 
 Variabel MQTT sudah ditetapkan di issue #12. `N8N_WEBHOOK_URL` masih usulan dan ditetapkan di issue #29.
