@@ -13,16 +13,17 @@ from django.db import close_old_connections
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from monitor.ai import load_model, predict_level
 from monitor.models import SENSORS, Node, Reading
-from monitor.mqtt_util import client_dari_env
+from monitor.mqtt_util import client_from_env
 
 logger = logging.getLogger('monitor.listener')
 
-TOPIK_DATA = 'smarttps/+/data'
-SEQ_MAKS = 2147483647  # batas PositiveIntegerField di PostgreSQL
+DATA_TOPIC = 'smarttps/+/data'
+SEQ_MAX = 2147483647  # batas PositiveIntegerField di PostgreSQL
 
 
-def angka(v):
+def is_number(v):
     """True bila v angka biasa. Teks, boolean, NaN, dan inf ditolak."""
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         return False
@@ -32,71 +33,81 @@ def angka(v):
         return False
 
 
-def tolak(topic, alasan, payload):
-    teks = payload.decode('utf-8', 'replace') if isinstance(payload, bytes) else str(payload)
-    logger.warning('Ditolak %s: %s | %s', topic, alasan, teks[:200])
+def reject(topic, reason, payload):
+    text = payload.decode('utf-8', 'replace') if isinstance(payload, bytes) else str(payload)
+    logger.warning('Ditolak %s: %s | %s', topic, reason, text[:200])
 
 
 def process_message(topic, payload):
     """Periksa dan simpan satu pesan. Mengembalikan Reading, atau None bila ditolak/duplikat."""
-    bagian = topic.split('/')
-    if len(bagian) != 3 or bagian[0] != 'smarttps' or bagian[2] != 'data':
-        return tolak(topic, 'topik tidak dikenal', payload)
-    node_id = bagian[1]
+    parts = topic.split('/')
+    if len(parts) != 3 or parts[0] != 'smarttps' or parts[2] != 'data':
+        return reject(topic, 'topik tidak dikenal', payload)
+    node_id = parts[1]
 
     try:
         data = json.loads(payload)
     except ValueError:
-        return tolak(topic, 'JSON tidak valid', payload)
+        return reject(topic, 'JSON tidak valid', payload)
     if not isinstance(data, dict):
-        return tolak(topic, 'payload harus objek JSON', payload)
+        return reject(topic, 'payload harus objek JSON', payload)
 
     if data.get('node') != node_id:
-        return tolak(topic, 'node di payload tidak sama dengan topik', payload)
+        return reject(topic, 'node di payload tidak sama dengan topik', payload)
     node = Node.objects.filter(node_id=node_id, aktif=True).first()
     if node is None:
-        return tolak(topic, 'node tidak terdaftar atau nonaktif', payload)
+        return reject(topic, 'node tidak terdaftar atau nonaktif', payload)
 
     seq = data.get('seq')
-    if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq <= SEQ_MAKS:
-        return tolak(topic, 'seq harus bilangan bulat 0 atau lebih', payload)
+    if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq <= SEQ_MAX:
+        return reject(topic, 'seq harus bilangan bulat 0 atau lebih', payload)
 
     rsr0 = data.get('rsr0')
     if not isinstance(rsr0, dict):
-        return tolak(topic, 'rsr0 tidak ada', payload)
+        return reject(topic, 'rsr0 tidak ada', payload)
     for s in SENSORS:
-        if not angka(rsr0.get(s)):
-            return tolak(topic, f'rsr0.{s} bukan angka', payload)
+        if not is_number(rsr0.get(s)):
+            return reject(topic, f'rsr0.{s} bukan angka', payload)
+        if rsr0[s] <= 0:  # rasio Rs/R0 tidak mungkin 0 atau negatif, dan model memakai ln(Rs/R0)
+            return reject(topic, f'rsr0.{s} harus lebih dari 0', payload)
 
     # DHT22 boleh null (gagal baca). Keputusan akhirnya di issue #26.
     for k in ('suhu', 'kelembapan'):
-        if data.get(k) is not None and not angka(data[k]):
-            return tolak(topic, f'{k} bukan angka', payload)
+        if data.get(k) is not None and not is_number(data[k]):
+            return reject(topic, f'{k} bukan angka', payload)
 
     ts = data.get('ts')
     if ts is None:
-        waktu = timezone.now()  # README: ts kosong berarti waktu terima
+        timestamp = timezone.now()  # README: ts kosong berarti waktu terima
     else:
         try:
-            waktu = parse_datetime(ts) if isinstance(ts, str) else None
+            timestamp = parse_datetime(ts) if isinstance(ts, str) else None
         except ValueError:
-            waktu = None
-        if waktu is None:
-            return tolak(topic, 'ts harus ISO 8601', payload)
-        if timezone.is_naive(waktu):
-            waktu = timezone.make_aware(waktu)
+            timestamp = None
+        if timestamp is None:
+            return reject(topic, 'ts harus ISO 8601', payload)
+        if timezone.is_naive(timestamp):
+            timestamp = timezone.make_aware(timestamp)
 
     # QoS 1 bisa mengirim pesan yang sama dua kali
     if Reading.objects.filter(node=node, seq=seq).exists():
         logger.info('Duplikat diabaikan %s seq=%s', node_id, seq)
         return None
 
+    try:
+        level, model_ver = predict_level(rsr0)
+    except Exception:
+        # data tetap disimpan walau model gagal, supaya pembacaan tidak hilang
+        logger.exception('Tingkat bau gagal ditentukan untuk %s seq=%s', node_id, seq)
+        level, model_ver = None, ''
+
     reading = Reading.objects.create(
-        node=node, seq=seq, waktu=waktu,
+        node=node, seq=seq, waktu=timestamp,
         suhu=data.get('suhu'), kelembapan=data.get('kelembapan'),
+        level=level, model_ver=model_ver,
         **{s: rsr0[s] for s in SENSORS},
     )
-    logger.info('Tersimpan %s seq=%s', node_id, seq)
+    logger.info('Tersimpan %s seq=%s level=%s', node_id, seq, level)
     return reading
 
 
@@ -105,8 +116,8 @@ def on_connect(client, userdata, flags, reason_code, properties):
         logger.error('Gagal terhubung ke broker: %s', reason_code)
         return
     # Subscribe di sini supaya langganan dipasang lagi setiap kali tersambung ulang
-    client.subscribe(TOPIK_DATA, qos=1)
-    logger.info('Terhubung, berlangganan %s', TOPIK_DATA)
+    client.subscribe(DATA_TOPIC, qos=1)
+    logger.info('Terhubung, berlangganan %s', DATA_TOPIC)
 
 
 def on_disconnect(client, userdata, flags, reason_code, properties):
@@ -127,8 +138,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
+        # muat model sekali di awal (sekitar 1 detik), supaya pesan pertama tidak tertunda
+        logger.info('Model AI: %s', load_model()[-1])
+
         # clean_session=False dan client_id tetap: broker menyimpan pesan QoS 1 selama listener terputus
-        client, host, port = client_dari_env('smarttps-listener', clean_session=False)
+        client, host, port = client_from_env('smarttps-listener', clean_session=False)
         client.on_connect = on_connect
         client.on_disconnect = on_disconnect
         client.on_message = on_message

@@ -5,7 +5,7 @@ import paho.mqtt.client as mqtt
 from django.core.management.base import CommandError
 
 
-def client_dari_env(client_id, clean_session=True):
+def client_from_env(client_id, clean_session=True):
     """Kembalikan (client, host, port) sesuai MQTT_* di .env."""
     host = os.environ.get('MQTT_HOST')
     if not host:

@@ -24,13 +24,13 @@ Daftar perbedaan dengan kode lama ada di [Daftar_Perubahan_Backend_SMART-TPS.txt
 | *Database* | PostgreSQL 15 |
 | MQTT *client* | paho-mqtt 2.2, dijalankan sebagai *management command* `run_listener` |
 | MQTT *broker* | Mosquitto (Docker Compose), TLS port 8883 |
-| Model AI | K-Means k=3 dan *scaler* (scikit-learn), dimuat dengan joblib |
+| Model AI | K-Means k=3 dan *scaler* dari tim AI, scikit-learn 1.6.1 (sama dengan versi pelatihan), dimuat dengan joblib |
 | *Deployment* | Docker Compose di VPS Azure for Students: `mosquitto`, `db`, `web` (gunicorn), `listener`, `nginx`, `n8n` |
 | Notifikasi | *Webhook* ke n8n |
 
 ## Data sensor
 
-Tiap *node* mengirim **11 data sensor** per pembacaan. Kesebelas data ini disimpan dan dipakai sebagai fitur K-Means.
+Tiap *node* mengirim **11 data sensor** per pembacaan. Kesebelas data ini disimpan. Model K-Means dari tim AI (#17) memakai 4 di antaranya: MQ135, MQ3, MQ4, dan MQ8.
 
 | Data | Jumlah | Satuan |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ Relasi: satu `NODE` punya banyak `READING`, `R0_CONFIG`, dan `NOTIFICATION`. Sat
 
 | Aturan | Isi |
 | --- | --- |
-| Tingkat bau | K-Means memilih rendah, sedang, atau tinggi dari 11 data sensor |
+| Tingkat bau | K-Means memilih Normal, Sedang, atau Tinggi dari 4 sensor (MQ135, MQ3, MQ4, MQ8) |
 | Status TPS | Ikut *node* aktif yang tingkatnya paling tinggi |
 | Tren | Dilihat dari 15 prediksi terakhir: naik, stabil, atau turun |
 | *Node offline* | Tidak mengirim data lebih dari 3 menit |
@@ -151,6 +151,28 @@ python manage.py run_listener
 
 Pesan yang ditolak dicatat sebagai `WARNING` beserta alasannya. Pesan dengan `seq` yang sudah tersimpan untuk *node* yang sama diabaikan sebagai duplikat.
 
+## Model AI
+
+*Listener* menentukan tingkat bau setiap pesan sebelum menyimpannya (#26). File model ada di `monitor/ml_models/`, berasal dari *branch* `ragil` (`AI/model_kmeans.zip`, notebook `02_modeling.ipynb`).
+
+| File | Isi |
+| --- | --- |
+| `scaler.joblib` | StandardScaler untuk 4 fitur |
+| `kmeans_model.joblib` | K-Means k=3 |
+| `label_map.joblib` | Nomor *cluster* ke Normal, Sedang, Tinggi |
+
+Langkahnya (`monitor/ai.py`):
+1. Ambil `rsr0` untuk MQ135, MQ3, MQ4, dan MQ8, lalu hitung `ln(Rs/R0)`.
+2. Standarisasi dengan rata-rata dan simpangan baku dari `scaler.joblib`.
+3. Pilih *centroid* terdekat, lalu ubah ke tingkat dengan `label_map.joblib`: Normal = 0, Sedang = 1, Tinggi = 2.
+4. Simpan tingkat di `Reading.level` dan versi model di `Reading.model_ver`, misalnya `kmeans-b75cc553` (8 karakter awal SHA-256 file model).
+
+Pesan dengan `rsr0` 0 atau negatif ditolak, karena `ln` tidak terdefinisi. Bila model gagal, pembacaan tetap disimpan tanpa tingkat dan galatnya dicatat di log.
+
+Mengganti model: timpa ketiga file dengan versi baru dari tim AI, lalu jalankan ulang *listener*. Versi model berubah otomatis. Bila fitur model berubah, `FEATURES` dan `FEATURE_NAMES` di `monitor/ai.py` juga harus diubah, karena *listener* menolak berjalan bila nama fitur *scaler* tidak cocok.
+
+Hasil uji (#26): 2.160 baris TS5 menghasilkan tingkat yang sama dengan notebook AI (489 Normal, 1.118 Sedang, 553 Tinggi), dan waktu penentuan rata-rata di bawah 0,1 ms per data.
+
 ## Simulator
 
 Simulator mengirim dataset TS5 sebagai pesan MQTT dari N1-N4, jadi *listener* bisa diuji tanpa alat. File `TS5.csv` tidak ada di repo. Simpan di komputer, lalu tunjuk dengan `--dataset` atau variabel `SIMULATOR_DATASET`.
@@ -165,36 +187,36 @@ python manage.py run_simulator --dataset D:/data/TS5.csv --interval 1
 python manage.py run_simulator --dataset D:/data/TS5.csv
 
 # 100 pesan (25 siklus x 4 node) lalu berhenti
-python manage.py run_simulator --dataset D:/data/TS5.csv --siklus 25 --interval 0.05
+python manage.py run_simulator --dataset D:/data/TS5.csv --cycles 25 --interval 0.05
 
 # matikan N3 setelah 10 siklus, untuk uji node offline
-python manage.py run_simulator --dataset D:/data/TS5.csv --mati N3 --mati-setelah 10
+python manage.py run_simulator --dataset D:/data/TS5.csv --off N3 --off-after 10
 ```
 
 | Opsi | Fungsi | Bawaan |
 | --- | --- | --- |
 | `--dataset` | Path `TS5.csv` | `SIMULATOR_DATASET`, atau `TS5.csv` di folder kerja |
 | `--interval` | Detik antar siklus | 60 |
-| `--siklus` | Jumlah siklus, 0 berarti tanpa batas | 0 |
+| `--cycles` | Jumlah siklus, 0 berarti tanpa batas | 0 |
 | `--node` | *Node* yang disimulasikan | N1 N2 N3 N4 |
-| `--mati`, `--mati-setelah` | *Node* yang berhenti mengirim, dan setelah berapa siklus | tidak ada, 5 |
-| `--seq-awal` | Nomor `seq` pertama tiap *node*. Ubah bila `seq` yang sama sudah tersimpan | 1 |
+| `--off`, `--off-after` | *Node* yang berhenti mengirim, dan setelah berapa siklus | tidak ada, 5 |
+| `--seq-start` | Nomor `seq` pertama tiap *node*. Ubah bila `seq` yang sama sudah tersimpan | 1 |
 
 Cara kerja:
 - Kolom dibaca menurut nama (`MQ2`, `MQ135`, `Temperature`, `Humidity`), karena urutan kolom antar file TS berbeda.
 - Tiap *node* mulai dari baris yang berbeda (N1 baris 1, N2 baris 541, dan seterusnya), lalu berputar ke awal bila dataset habis.
 - Setiap siklus tiap *node* mengirim satu baris ke `smarttps/{node}/data` dengan QoS 1, memakai format di `dokumentasi/Format_Payload_MQTT_SMART-TPS.txt`.
-- Nilai dataset dikirim apa adanya pada kunci `rsr0`. Nilai TS5 berkisar 1 sampai 77, bukan rasio Rs/R0 (sekitar 1 atau kurang). Satuannya perlu diselaraskan dengan tim AI dan HW sebelum hasil K-Means (#26) dipercaya.
+- Nilai sensor dibagi nilai acuan, yaitu median menit 1-60 dataset, lalu dikirim pada kunci `rsr0`. Ini sama dengan langkah *preprocessing* tim AI, jadi tingkat bau dari *backend* sama dengan hasil notebook.
 - *Node* yang dimatikan hanya berhenti mengirim. Deteksi *offline* dikerjakan di #28.
 
 ## Keputusan yang masih terbuka
 
 | No | Keputusan | Pilihan | Terkait |
 | --- | --- | --- | --- |
-| 1 | Nama tingkat bau | rendah/sedang/tinggi (proposal, README utama) atau Normal/Sedang/Tinggi (issue AI) | #11, #26 |
+| 1 | Nama tingkat bau | rendah/sedang/tinggi (proposal, README utama, label `Reading.Level` saat ini) atau Normal/Sedang/Tinggi (model AI, issue #17 dan #26). Nilai yang disimpan tetap 0, 1, 2 | #11, #26 |
 | 2 | `seq` kembali ke 0 saat ESP32 *restart* | Firmware menyimpan `seq` di NVS, atau *payload* ditambah `boot_id` | #5, #11 |
 | 3 | Data pelapor dan foto laporan warga | Warga anonim, atau warga punya akun (tambah peran warga) | #11 |
-| 4 | Prediksi saat DHT22 gagal membaca (data tetap disimpan dengan `null`, sesuai #5) | Tidak diberi prediksi, atau diprediksi dengan nilai pengganti | #26 |
+| 4 | Nilai acuan (R0) di firmware | Model dilatih dengan acuan = median menit 1-60 data segar. Di lapangan acuannya R0 udara bersih. Kesetaraannya perlu dicek tim AI dan HW | #24, #42 |
 | 5 | Ukuran dan *region* VPS Azure for Students | Dipilih: Azure for Students. Ukuran VM dan *region* yang diizinkan perlu dicek | #37 |
 
 ## Issue backend
