@@ -1,0 +1,60 @@
+# Cloud SMART-TPS, tahap 1: gerbang MQTT (EMQX) dan PostgreSQL pusat.
+# Jalankan dari Ubuntu (WSL) atau VPS: docker compose up -d
+name: smarttps-cloud
+
+services:
+  emqx:
+    image: emqx/emqx:6.3.3
+    restart: unless-stopped
+    hostname: node1.emqx.smarttps
+    environment:
+      # nama node tetap; tanpa ini nama memakai IP container yang bisa berubah,
+      # padahal data EMQX (akun MQTT, sesi) terikat ke nama node
+      EMQX_NODE__NAME: emqx@node1.emqx.smarttps
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?isi EMQX_DASHBOARD_PASSWORD di .env}
+      # TLS dengan sertifikat sendiri (dibuat setup.sh)
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/smarttps/certs/server.crt
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/smarttps/certs/server.key
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: /opt/emqx/etc/smarttps/certs/ca.crt
+      # wajib login; akun awal dimuat dari accounts.csv saat database akun masih kosong
+      EMQX_AUTHENTICATION__1__MECHANISM: password_based
+      EMQX_AUTHENTICATION__1__BACKEND: built_in_database
+      EMQX_AUTHENTICATION__1__USER_ID_TYPE: username
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_FILE: /opt/emqx/etc/smarttps/accounts.csv
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_TYPE: plain
+    ports:
+      - "8883:8883"               # MQTT TLS, untuk bridge dari Mosquitto di Pi
+      - "127.0.0.1:18083:18083"   # dashboard EMQX, hanya dari komputer ini
+      - "127.0.0.1:11883:1883"    # MQTT tanpa TLS, hanya untuk uji lokal
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - ./certs:/opt/emqx/etc/smarttps/certs:ro
+      - ./emqx/accounts.csv:/opt/emqx/etc/smarttps/accounts.csv:ro
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: postgres:18.7-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smarttps
+      POSTGRES_USER: smarttps
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}
+    ports:
+      - "127.0.0.1:15432:5432"    # hanya dari komputer ini; 5432 sudah dipakai PostgreSQL Windows
+    volumes:
+      - pg_data:/var/lib/postgresql   # PostgreSQL 18 menyimpan data di bawah folder ini
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smarttps -d smarttps"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  emqx_data:
+  pg_data:

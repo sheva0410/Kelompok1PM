@@ -1,0 +1,29 @@
+# Edge SMART-TPS (Pi), tahap 2: Mosquitto lokal dengan bridge TLS ke EMQX di cloud.
+# Jalankan dari Ubuntu (WSL) atau Pi: docker compose up -d
+name: smarttps-edge
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.23
+    restart: unless-stopped
+    environment:
+      BRIDGE_PASSWORD: ${BRIDGE_PASSWORD:?isi BRIDGE_PASSWORD di .env}
+      CLOUD_HOST: ${CLOUD_HOST:-host.docker.internal}
+    # Mosquitto tidak membaca variabel lingkungan, jadi kata sandi dan alamat cloud
+    # disisipkan ke salinan mosquitto.conf saat container mulai.
+    command: >-
+      sh -c "sed -e \"s|__BRIDGE_PASSWORD__|$$BRIDGE_PASSWORD|\" -e \"s|__CLOUD_HOST__|$$CLOUD_HOST|\"
+      /etc/smarttps/mosquitto.conf > /mosquitto/config/mosquitto.conf
+      && exec mosquitto -c /mosquitto/config/mosquitto.conf"
+    ports:
+      - "127.0.0.1:21883:1883"   # ESP32/simulator; 1883 di Windows sudah dipakai Mosquitto lain
+    volumes:
+      # di luar /mosquitto, karena entrypoint image melakukan chown pada /mosquitto
+      - ./mosquitto/mosquitto.conf:/etc/smarttps/mosquitto.conf:ro
+      - ./certs/ca.crt:/etc/smarttps/ca.crt:ro
+      - mosquitto_data:/mosquitto/data   # antrean pesan saat cloud tidak terjangkau
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # cloud di komputer yang sama, jaringan terpisah
+
+volumes:
+  mosquitto_data:

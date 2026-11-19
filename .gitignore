@@ -10,6 +10,11 @@ secrets.h
 secrets.json
 credentials.json
 
+# Docker cloud/edge: sertifikat dan akun MQTT buatan cloud/setup.sh
+cloud/certs/
+cloud/emqx/accounts.csv
+edge/certs/
+
 # Firmware: SSID dan kata sandi Wi-Fi
 **/wifi_config.h
 
