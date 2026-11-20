@@ -1,4 +1,5 @@
-# Cloud SMART-TPS, tahap 1: gerbang MQTT (EMQX) dan PostgreSQL pusat.
+# Cloud SMART-TPS: gerbang MQTT (EMQX), Node-RED (pemroses data), PostgreSQL (data panas),
+# MinIO (data mentah).
 # Jalankan dari Ubuntu (WSL) atau VPS: docker compose up -d
 name: smarttps-cloud
 
@@ -23,6 +24,11 @@ services:
       EMQX_AUTHENTICATION__1__USER_ID_TYPE: username
       EMQX_AUTHENTICATION__1__BOOTSTRAP_FILE: /opt/emqx/etc/smarttps/accounts.csv
       EMQX_AUTHENTICATION__1__BOOTSTRAP_TYPE: plain
+      # sesi persisten Node-RED: pesan QoS 1 ditahan selama Node-RED mati, sampai 10.000 pesan
+      # (sekitar 41 jam untuk 4 node) dan paling lama 2 hari
+      EMQX_MQTT__MAX_MQUEUE_LEN: 10000
+      EMQX_MQTT__SESSION_EXPIRY_INTERVAL: 2d
+      EMQX_DURABLE_SESSIONS__ENABLE: "true"
     ports:
       - "8883:8883"               # MQTT TLS, untuk bridge dari Mosquitto di Pi
       - "127.0.0.1:18083:18083"   # dashboard EMQX, hanya dari komputer ini
@@ -55,6 +61,40 @@ services:
       timeout: 5s
       retries: 12
 
+  minio:
+    # MinIO berhenti merilis image Docker resmi sejak Oktober 2025. Image Chainguard dibangun
+    # dari kode sumber MinIO; hanya tag latest yang gratis, jadi dipatok dengan digest.
+    image: cgr.dev/chainguard/minio@sha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec  # RELEASE.2026-11-16T00-11-40Z
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: smarttps
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?isi MINIO_ROOT_PASSWORD di .env}
+    ports:
+      - "127.0.0.1:19001:9001"    # konsol MinIO, hanya dari komputer ini
+    volumes:
+      - minio_data:/data
+
+  nodered:
+    build: ./nodered
+    image: smarttps-nodered:5.0.10
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Jakarta
+      NODERED_PASSWORD: ${NODERED_PASSWORD:?isi NODERED_PASSWORD di .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MINIO_ROOT_USER: smarttps
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:11880:1880"    # editor Node-RED, hanya dari komputer ini
+    volumes:
+      - ./nodered:/data           # flows dan settings dari repo; perubahan di editor tersimpan ke sini
+    depends_on:
+      emqx: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      minio: { condition: service_started }
+
 volumes:
   emqx_data:
   pg_data:
+  minio_data:

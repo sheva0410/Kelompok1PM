@@ -37,3 +37,9 @@ staticfiles/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Node-RED cloud: berkas runtime di userDir (cloud/nodered)
+cloud/nodered/.*
+cloud/nodered/lib/
+cloud/nodered/node_modules/
+cloud/nodered/package*.json

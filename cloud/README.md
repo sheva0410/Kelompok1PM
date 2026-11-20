@@ -1,13 +1,15 @@
 # Cloud SMART-TPS
 
-Compose untuk sisi *cloud* pada arsitektur Pi-lab v2 (gerbang MQTT, pemroses aliran, penyimpanan, *dashboard*, model). Saat ini sampai **tahap 2**: EMQX (TLS + login) dan PostgreSQL, tujuan *bridge* dari `edge/`.
+Compose untuk sisi *cloud* pada arsitektur Pi-lab v2 (gerbang MQTT, pemroses aliran, penyimpanan, *dashboard*, model). Saat ini sampai **tahap 3**: EMQX (TLS + login), Node-RED sebagai pemroses data, PostgreSQL untuk data panas, dan MinIO untuk data mentah.
 
 | *Service* | *Image* | Port di komputer | Fungsi |
 | --- | --- | --- | --- |
 | `emqx` | `emqx/emqx:6.3.3` | 8883 (MQTT TLS), 127.0.0.1:18083 (*dashboard*), 127.0.0.1:11883 (MQTT tanpa TLS, uji lokal) | Gerbang MQTT, tujuan *bridge* dari Mosquitto di Pi |
-| `postgres` | `postgres:18.7-alpine` | 127.0.0.1:15432 | *Database* pusat |
+| `postgres` | `postgres:18.7-alpine` | 127.0.0.1:15432 | *Database* pusat (data panas) |
+| `nodered` | dibangun dari `nodered/Dockerfile` (`nodered/node-red:5.0.10` + `pg`, `minio`) | 127.0.0.1:11880 (editor) | Memeriksa pesan sensor, menyimpan ke PostgreSQL dan MinIO |
+| `minio` | `cgr.dev/chainguard/minio` (dipatok *digest*, RELEASE.2026-11-16) | 127.0.0.1:19001 (konsol) | Arsip pesan mentah, bahan latih ulang model |
 
-EMQX 6.x berlisensi BSL 1.1 dan gratis untuk satu *node* (lisensi *community*).
+EMQX 6.x berlisensi BSL 1.1 dan gratis untuk satu *node* (lisensi *community*). MinIO berhenti merilis *image* Docker resmi sejak Oktober 2025, jadi dipakai *image* Chainguard yang dibangun dari kode sumber MinIO; hanya tag `latest` yang gratis, sehingga dipatok dengan *digest*.
 
 ## Menjalankan
 
@@ -17,7 +19,7 @@ Dari Ubuntu (WSL) atau VPS:
 cd cloud
 bash setup.sh            # .env, sertifikat, akun MQTT awal, bahan untuk edge/
 docker compose up -d
-docker compose ps        # tunggu sampai keduanya (healthy)
+docker compose ps        # tunggu sampai emqx dan postgres (healthy)
 ```
 
 `setup.sh` hanya membuat yang belum ada. Untuk VPS, tambahkan alamatnya ke sertifikat: `EXTRA_SAN="DNS:nama.domain,IP:1.2.3.4" bash setup.sh` (hapus `certs/` dulu bila sertifikat sudah pernah dibuat).
@@ -27,13 +29,36 @@ docker compose ps        # tunggu sampai keduanya (healthy)
 | Akun | Dipakai oleh |
 | --- | --- |
 | `pi-bridge` | *Bridge* Mosquitto di Pi |
-| `nodered` | Node-RED *cloud* (tahap 3) |
+| `nodered` | Node-RED *cloud* |
 
 Akun dimuat dari `emqx/accounts.csv` saat database akun EMQX masih kosong (volume baru). Akun berikutnya ditambah lewat *dashboard* EMQX. Klien tanpa akun ditolak.
 
-Pesan yang tiba saat tidak ada *subscriber* dibuang EMQX. Node-RED di tahap 3 perlu sesi persisten (`clean_session` false, *client id* tetap) supaya pesan disimpan EMQX selama Node-RED mati. Sesi itu hilang bila EMQX sendiri di-*restart*.
+Pesan yang tiba saat tidak ada *subscriber* dibuang EMQX. Karena itu Node-RED memakai sesi persisten (*client id* `smarttps-nodered`, `clean_session` false), dan EMQX memakai *durable session* supaya sesi itu tetap ada walau EMQX di-*restart*. Selama Node-RED mati, EMQX menahan sampai 10.000 pesan (sekitar 41 jam untuk 4 *node*), paling lama 2 hari.
 
 *Dashboard* EMQX: http://localhost:18083, login `admin` dengan `EMQX_DASHBOARD_PASSWORD`.
+
+## Node-RED
+
+Flow `Data sensor` (`nodered/flows.json`):
+
+1. `mqtt in` berlangganan `smarttps/+/data` (QoS 1) dari EMQX dengan akun `nodered`.
+2. **periksa pesan**: aturan sama dengan listener Django #12, kodenya di `nodered/reading.js`. Pesan yang ditolak dicatat di log (`Ditolak ...`).
+3. **simpan ke PostgreSQL**: menolak *node* yang tidak terdaftar atau nonaktif, lalu `INSERT ... ON CONFLICT (node_id, seq) DO NOTHING` ke `monitor_reading`, jadi pesan ganda QoS 1 dilewati. Kolom `level` masih kosong; diisi dari hasil model-ai di Pi pada tahap 5.
+4. **arsip mentah ke MinIO**: setiap pesan, termasuk yang ditolak, disimpan apa adanya ke *bucket* `smarttps-raw` dengan nama `<node>/<tanggal UTC>/<jam UTC>-<id pesan>.json`. *Bucket* dibuat otomatis saat pesan pertama.
+
+Editor: http://localhost:11880 (tanpa login, hanya bisa dibuka dari komputer ini; di VPS lewat SSH *tunnel*). Perubahan yang di-*deploy* dari editor tersimpan ke `nodered/flows.json`. Kata sandi tidak ada di repo: `flows_cred.json` hanya berisi `${NODERED_PASSWORD}`, dan `settings.js` membaca kata sandi PostgreSQL dan MinIO dari `.env`.
+
+Uji aturan pemeriksaan pesan:
+
+```bash
+docker compose run --rm --no-deps --entrypoint node nodered /data/reading.test.js
+```
+
+Log: `docker compose logs -f nodered`.
+
+## MinIO
+
+Konsol: http://localhost:19001, login `smarttps` dengan `MINIO_ROOT_PASSWORD`. Node-RED juga memakai akun ini.
 
 ## Database
 
@@ -45,4 +70,5 @@ Masuk ke psql: `docker compose exec postgres psql -U smarttps -d smarttps`.
 
 - Port 15432 dan 11883 dipakai karena 5432 dan 1883 sudah dipakai PostgreSQL dan Mosquitto di Windows.
 - Listener TLS 8883 memakai sertifikat dari CA sendiri (`certs/`, dibuat `setup.sh`), dengan SAN `host.docker.internal`, `localhost`, `emqx`, `127.0.0.1`.
-- Pemakaian memori saat diam: EMQX sekitar 370 MiB, PostgreSQL sekitar 40 MiB.
+- Pemakaian memori setelah uji: EMQX sekitar 435 MiB, Node-RED sekitar 100 MiB, MinIO sekitar 70 MiB, PostgreSQL sekitar 40 MiB.
+- Di WSL, distro Ubuntu mati sendiri bila tidak ada terminal Ubuntu yang terbuka, dan semua container ikut berhenti. Biarkan satu terminal Ubuntu terbuka selama menguji. Di Pi dan VPS hal ini tidak terjadi.
