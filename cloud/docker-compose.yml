@@ -1,5 +1,5 @@
 # Cloud SMART-TPS: gerbang MQTT (EMQX), Node-RED (pemroses data), PostgreSQL (data panas),
-# MinIO (data mentah).
+# MinIO (data mentah), Grafana (dashboard dan alert Telegram).
 # Jalankan dari Ubuntu (WSL) atau VPS: docker compose up -d
 name: smarttps-cloud
 
@@ -50,11 +50,13 @@ services:
       POSTGRES_DB: smarttps
       POSTGRES_USER: smarttps
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?isi GRAFANA_DB_PASSWORD di .env}   # untuk 02-grafana-user.sh
     ports:
       - "127.0.0.1:15432:5432"    # hanya dari komputer ini; 5432 sudah dipakai PostgreSQL Windows
     volumes:
       - pg_data:/var/lib/postgresql   # PostgreSQL 18 menyimpan data di bawah folder ini
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./postgres/02-grafana-user.sh:/docker-entrypoint-initdb.d/02-grafana-user.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U smarttps -d smarttps"]
       interval: 10s
@@ -94,7 +96,28 @@ services:
       postgres: { condition: service_healthy }
       minio: { condition: service_started }
 
+  grafana:
+    image: grafana/grafana:13.3.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?isi GRAFANA_ADMIN_PASSWORD di .env}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD}
+      # dari @BotFather dan chat tujuan; tanpa ini alert tetap dievaluasi tetapi gagal terkirim
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-belum-diisi}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-0}
+    ports:
+      - "127.0.0.1:13000:3000"    # dashboard Grafana, hanya dari komputer ini
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+
 volumes:
+  grafana_data:
   emqx_data:
   pg_data:
   minio_data:

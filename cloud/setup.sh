@@ -11,7 +11,7 @@ random_secret() { openssl rand -base64 24 | tr -d '/+=' | cut -c1-24; }
 
 # 1. kata sandi di .env (hanya menambah yang belum ada)
 touch .env
-for v in EMQX_DASHBOARD_PASSWORD POSTGRES_PASSWORD BRIDGE_PASSWORD NODERED_PASSWORD MINIO_ROOT_PASSWORD; do
+for v in EMQX_DASHBOARD_PASSWORD POSTGRES_PASSWORD BRIDGE_PASSWORD NODERED_PASSWORD MINIO_ROOT_PASSWORD GRAFANA_ADMIN_PASSWORD GRAFANA_DB_PASSWORD; do
   grep -q "^$v=." .env || { sed -i "/^$v=/d" .env; echo "$v=$(random_secret)" >> .env; echo "dibuat: $v"; }
 done
 set -a; . ./.env; set +a

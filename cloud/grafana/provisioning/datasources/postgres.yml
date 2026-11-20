@@ -1,0 +1,14 @@
+apiVersion: 1
+datasources:
+  - name: PostgreSQL SMART-TPS
+    uid: smarttps-pg
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: grafana    # akun baca-saja (postgres/02-grafana-user.sh)
+    isDefault: true
+    jsonData:
+      database: smarttps
+      sslmode: disable
+      postgresVersion: 1800
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}

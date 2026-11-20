@@ -1,6 +1,6 @@
 # Cloud SMART-TPS
 
-Compose untuk sisi *cloud* pada arsitektur Pi-lab v2 (gerbang MQTT, pemroses aliran, penyimpanan, *dashboard*, model). Saat ini sampai **tahap 3**: EMQX (TLS + login), Node-RED sebagai pemroses data, PostgreSQL untuk data panas, dan MinIO untuk data mentah.
+Compose untuk sisi *cloud* pada arsitektur Pi-lab v2 (gerbang MQTT, pemroses aliran, penyimpanan, *dashboard*, model). Saat ini sampai **tahap 4**: EMQX (TLS + login), Node-RED sebagai pemroses data, PostgreSQL untuk data panas, MinIO untuk data mentah, dan Grafana untuk *dashboard* serta *alert* Telegram.
 
 | *Service* | *Image* | Port di komputer | Fungsi |
 | --- | --- | --- | --- |
@@ -8,6 +8,7 @@ Compose untuk sisi *cloud* pada arsitektur Pi-lab v2 (gerbang MQTT, pemroses ali
 | `postgres` | `postgres:18.7-alpine` | 127.0.0.1:15432 | *Database* pusat (data panas) |
 | `nodered` | dibangun dari `nodered/Dockerfile` (`nodered/node-red:5.0.10` + `pg`, `minio`) | 127.0.0.1:11880 (editor) | Memeriksa pesan sensor, menyimpan ke PostgreSQL dan MinIO |
 | `minio` | `cgr.dev/chainguard/minio` (dipatok *digest*, RELEASE.2026-11-16) | 127.0.0.1:19001 (konsol) | Arsip pesan mentah, bahan latih ulang model |
+| `grafana` | `grafana/grafana:13.3.1` | 127.0.0.1:13000 | *Dashboard* dan *alert* ke Telegram |
 
 EMQX 6.x berlisensi BSL 1.1 dan gratis untuk satu *node* (lisensi *community*). MinIO berhenti merilis *image* Docker resmi sejak Oktober 2025, jadi dipakai *image* Chainguard yang dibangun dari kode sumber MinIO; hanya tag `latest` yang gratis, sehingga dipatok dengan *digest*.
 
@@ -60,6 +61,29 @@ Log: `docker compose logs -f nodered`.
 
 Konsol: http://localhost:19001, login `smarttps` dengan `MINIO_ROOT_PASSWORD`. Node-RED juga memakai akun ini.
 
+## Grafana
+
+http://localhost:13000, login `admin` dengan `GRAFANA_ADMIN_PASSWORD`. Semua isi dipasang dari file (`grafana/`), jadi perubahan di tampilan Grafana tidak tersimpan; ubah file lalu `docker compose restart grafana`.
+
+- **Data source** PostgreSQL memakai akun `grafana` yang hanya boleh `SELECT` (`postgres/02-grafana-user.sh`).
+- ***Dashboard* SMART-TPS** (`grafana/dashboards/smarttps.json`): tabel status node (data terakhir, menit sejak data terakhir, tingkat bau, suhu, kelembapan), grafik tingkat bau per node, grafik Rs/R0 sembilan sensor, dan grafik suhu-kelembapan untuk node yang dipilih.
+- ***Alert*** (`grafana/provisioning/alerting/telegram.yml`), dievaluasi tiap menit dan dikirim ke Telegram:
+
+| *Alert* | Menyala bila |
+| --- | --- |
+| Node tidak mengirim data | data terakhir node aktif lebih dari 5 menit lalu (atau belum pernah ada) |
+| Tingkat bau Tinggi | level terakhir node dalam 10 menit terakhir adalah 2 (Tinggi) |
+
+Supaya *alert* sampai ke Telegram:
+
+1. Buat bot lewat @BotFather, salin tokennya.
+2. Kirim pesan apa saja ke bot (atau masukkan bot ke grup), lalu buka `https://api.telegram.org/bot<TOKEN>/getUpdates` dan salin `chat.id`.
+3. Isi `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID` di `.env`, lalu `docker compose up -d grafana`.
+
+Tanpa token, *alert* tetap dievaluasi dan terlihat di Grafana, tetapi pengirimannya gagal (log: `webhook response status 404`).
+
+PostgreSQL dengan volume lama (dibuat sebelum tahap 4) belum punya akun `grafana`. Buat sekali: `docker compose up -d postgres && docker compose exec postgres sh /docker-entrypoint-initdb.d/02-grafana-user.sh`.
+
 ## Database
 
 `postgres/init.sql` membuat tabel `monitor_node` dan `monitor_reading`, sama persis dengan migrasi Django #11, lalu mendaftarkan N1-N4. Skrip ini hanya berjalan saat volume `pg_data` masih kosong. Untuk mengulang dari nol: `docker compose down -v` (seluruh data ikut terhapus).
@@ -70,5 +94,5 @@ Masuk ke psql: `docker compose exec postgres psql -U smarttps -d smarttps`.
 
 - Port 15432 dan 11883 dipakai karena 5432 dan 1883 sudah dipakai PostgreSQL dan Mosquitto di Windows.
 - Listener TLS 8883 memakai sertifikat dari CA sendiri (`certs/`, dibuat `setup.sh`), dengan SAN `host.docker.internal`, `localhost`, `emqx`, `127.0.0.1`.
-- Pemakaian memori setelah uji: EMQX sekitar 435 MiB, Node-RED sekitar 100 MiB, MinIO sekitar 70 MiB, PostgreSQL sekitar 40 MiB.
+- Pemakaian memori setelah uji: EMQX sekitar 435 MiB, Grafana sekitar 270 MiB, Node-RED sekitar 100 MiB, MinIO sekitar 70 MiB, PostgreSQL sekitar 40 MiB (total sekitar 920 MiB).
 - Di WSL, distro Ubuntu mati sendiri bila tidak ada terminal Ubuntu yang terbuka, dan semua container ikut berhenti. Biarkan satu terminal Ubuntu terbuka selama menguji. Di Pi dan VPS hal ini tidak terjadi.
