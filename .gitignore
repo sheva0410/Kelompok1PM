@@ -38,8 +38,8 @@ Thumbs.db
 desktop.ini
 .DS_Store
 
-# Node-RED cloud: berkas runtime di userDir (cloud/nodered)
-cloud/nodered/.*
-cloud/nodered/lib/
-cloud/nodered/node_modules/
-cloud/nodered/package*.json
+# Node-RED cloud dan edge: berkas runtime di userDir
+*/nodered/.*
+*/nodered/lib/
+*/nodered/node_modules/
+*/nodered/package*.json

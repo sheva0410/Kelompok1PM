@@ -44,4 +44,5 @@ cp certs/ca.crt ../edge/certs/ca.crt
 touch ../edge/.env
 sed -i '/^BRIDGE_PASSWORD=/d' ../edge/.env
 echo "BRIDGE_PASSWORD=$BRIDGE_PASSWORD" >> ../edge/.env
+grep -q '^POSTGRES_PASSWORD=.' ../edge/.env || echo "POSTGRES_PASSWORD=$(random_secret)" >> ../edge/.env   # PostgreSQL lokal Pi
 echo "siap: cloud/.env, cloud/certs, cloud/emqx/accounts.csv, edge/.env, edge/certs/ca.crt"

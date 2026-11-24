@@ -1,4 +1,5 @@
-# Edge SMART-TPS (Pi): Mosquitto lokal dengan bridge TLS ke EMQX di cloud, dan model-ai (K-Means ONNX).
+# Edge SMART-TPS (Pi): Mosquitto lokal dengan bridge TLS ke EMQX di cloud, model-ai (K-Means ONNX),
+# dan penyimpanan lokal (Node-RED + PostgreSQL).
 # Jalankan dari Ubuntu (WSL) atau Pi: docker compose up -d
 name: smarttps-edge
 
@@ -31,5 +32,40 @@ services:
     restart: unless-stopped
     depends_on: [mosquitto]
 
+  postgres:
+    image: postgres:18.7-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smarttps
+      POSTGRES_USER: smarttps
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}
+    ports:
+      - "127.0.0.1:25432:5432"    # hanya dari Pi ini
+    volumes:
+      - pg_data:/var/lib/postgresql
+      - ../cloud/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro   # skema sama dengan cloud
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smarttps -d smarttps"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  nodered:
+    build: ../cloud/nodered          # image sama dengan Node-RED cloud
+    image: smarttps-nodered:5.0.10
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Jakarta
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:21880:1880"    # editor Node-RED edge, hanya dari Pi ini
+    volumes:
+      - ./nodered:/data
+      - ../cloud/nodered/reading.js:/smarttps/reading.js:ro
+    depends_on:
+      mosquitto: { condition: service_started }
+      postgres: { condition: service_healthy }
+
 volumes:
+  pg_data:
   mosquitto_data:

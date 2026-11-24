@@ -1,6 +1,7 @@
-// Pemeriksaan pesan smarttps/<node>/data. Aturannya sama dengan listener Django #12
-// (web/backend/monitor/management/commands/run_listener.py), kecuali cek node aktif
-// dan duplikat yang butuh database (dikerjakan di flow "simpan ke PostgreSQL").
+// Pemeriksaan dan penyimpanan pesan smarttps/<node>/data dan smarttps/<node>/level.
+// Dipakai Node-RED cloud dan Node-RED edge (Pi), supaya aturannya sama di kedua tempat.
+// Aturan pemeriksaan sama dengan listener Django #12
+// (web/backend/monitor/management/commands/run_listener.py).
 const SENSORS = ['mq2', 'mq3', 'mq4', 'mq5', 'mq6', 'mq8', 'mq9', 'mq135', 'mq136'];
 const SEQ_MAX = 2147483647; // batas kolom integer PostgreSQL
 const ISO = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})?$/;
@@ -74,4 +75,31 @@ function parseLevel(topic, payload) {
   return { level: { node: data.node, seq: data.seq, level: data.level, model_ver: data.model_ver } };
 }
 
-module.exports = { SENSORS, parseReading, parseLevel };
+// Simpan reading hasil parseReading. Mengembalikan { log } atau { warn }.
+async function saveReading(pg, r) {
+  const found = await pg.query('SELECT aktif FROM monitor_node WHERE node_id = $1', [r.node]);
+  if (!found.rows[0]?.aktif) return { warn: `${r.node}: node tidak terdaftar atau nonaktif` };
+  // level diisi dari pesan level model-ai. QoS 1 bisa mengirim pesan yang sama dua kali,
+  // jadi (node, seq) yang sudah ada dilewati.
+  const columns = ['node_id', 'seq', 'waktu', ...SENSORS, 'suhu', 'kelembapan'];
+  const res = await pg.query(
+    `INSERT INTO monitor_reading (${columns.join(', ')})
+     VALUES (${columns.map((_, i) => '$' + (i + 1)).join(', ')})
+     ON CONFLICT (node_id, seq) DO NOTHING`,
+    [r.node, r.seq, r.waktu, ...SENSORS.map(s => r.rsr0[s]), r.suhu, r.kelembapan]);
+  return { log: `${res.rowCount ? 'Tersimpan' : 'Duplikat diabaikan'} ${r.node} seq=${r.seq}` };
+}
+
+// Simpan level hasil parseLevel ke reading (node, seq) yang sama. Level dikirim model-ai setelah
+// data, tetapi INSERT data bisa belum selesai saat level tiba, jadi coba lagi tiap detik.
+async function saveLevel(pg, l, tries = 10, delay = 1000) {
+  for (let i = 0; i < tries; i++) {
+    const res = await pg.query('UPDATE monitor_reading SET level = $3, model_ver = $4 WHERE node_id = $1 AND seq = $2',
+      [l.node, l.seq, l.level, l.model_ver]);
+    if (res.rowCount) return { log: `Level ${l.node} seq=${l.seq}: ${l.level} (${l.model_ver})` };
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  return { warn: `Level ${l.node} seq=${l.seq} tidak punya data di monitor_reading` };
+}
+
+module.exports = { SENSORS, parseReading, parseLevel, saveReading, saveLevel };

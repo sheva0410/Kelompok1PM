@@ -43,7 +43,7 @@ Pesan yang tiba saat tidak ada *subscriber* dibuang EMQX. Karena itu Node-RED me
 Flow `Data sensor` (`nodered/flows.json`):
 
 1. `mqtt in` berlangganan `smarttps/+/data` (QoS 1) dari EMQX dengan akun `nodered`.
-2. **periksa pesan**: aturan sama dengan listener Django #12, kodenya di `nodered/reading.js`. Pesan yang ditolak dicatat di log (`Ditolak ...`).
+2. **periksa pesan**: aturan sama dengan listener Django #12, kodenya di `nodered/reading.js` (juga dipakai Node-RED *edge* di Pi). Pesan yang ditolak dicatat di log (`Ditolak ...`).
 3. **simpan ke PostgreSQL**: menolak *node* yang tidak terdaftar atau nonaktif, lalu `INSERT ... ON CONFLICT (node_id, seq) DO NOTHING` ke `monitor_reading`, jadi pesan ganda QoS 1 dilewati. Kolom `level` diisi oleh flow berikutnya.
 4. **arsip mentah ke MinIO**: setiap pesan, termasuk yang ditolak, disimpan apa adanya ke *bucket* `smarttps-raw` dengan nama `<node>/<tanggal UTC>/<jam UTC>-<id pesan>.json`. *Bucket* dibuat otomatis saat pesan pertama.
 
