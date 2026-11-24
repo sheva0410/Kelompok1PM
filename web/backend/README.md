@@ -24,13 +24,13 @@ Daftar perbedaan dengan kode lama ada di [Daftar_Perubahan_Backend_SMART-TPS.txt
 | *Database* | PostgreSQL 15 |
 | MQTT *client* | paho-mqtt 2.2, dijalankan sebagai *management command* `run_listener` |
 | MQTT *broker* | Mosquitto (Docker Compose), TLS port 8883 |
-| Model AI | K-Means k=3 dan *scaler* dari tim AI, scikit-learn 1.6.1 (sama dengan versi pelatihan), dimuat dengan joblib |
+| Model AI | K-Means k=3 dan *scaler* dari tim AI (V2), scikit-learn 1.9.1 (sama dengan versi pelatihan), dimuat dengan joblib |
 | *Deployment* | Docker Compose di VPS Azure for Students: `mosquitto`, `db`, `web` (gunicorn), `listener`, `nginx`, `n8n` |
 | Notifikasi | *Webhook* ke n8n |
 
 ## Data sensor
 
-Tiap *node* mengirim **11 data sensor** per pembacaan. Kesebelas data ini disimpan. Model K-Means dari tim AI (#17) memakai 4 di antaranya: MQ135, MQ3, MQ4, dan MQ8.
+Tiap *node* mengirim **11 data sensor** per pembacaan. Kesebelas data ini disimpan. Model K-Means dari tim AI (#17, V2) memakai kesebelasnya.
 
 | Data | Jumlah | Satuan |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ Relasi: satu `NODE` punya banyak `READING`, `R0_CONFIG`, dan `NOTIFICATION`. Sat
 
 | Aturan | Isi |
 | --- | --- |
-| Tingkat bau | K-Means memilih Normal, Sedang, atau Tinggi dari 4 sensor (MQ135, MQ3, MQ4, MQ8) |
+| Tingkat bau | K-Means memilih Normal, Sedang, atau Tinggi dari 9 sensor MQ, suhu, dan kelembapan |
 | Status TPS | Ikut *node* aktif yang tingkatnya paling tinggi |
 | Tren | Dilihat dari 15 prediksi terakhir: naik, stabil, atau turun |
 | *Node offline* | Tidak mengirim data lebih dari 3 menit |
@@ -153,25 +153,25 @@ Pesan yang ditolak dicatat sebagai `WARNING` beserta alasannya. Pesan dengan `se
 
 ## Model AI
 
-*Listener* menentukan tingkat bau setiap pesan sebelum menyimpannya (#26). File model ada di `monitor/ml_models/`, berasal dari *branch* `ragil` (`AI/model_kmeans.zip`, notebook `02_modeling.ipynb`).
+*Listener* menentukan tingkat bau setiap pesan sebelum menyimpannya (#26). File model ada di `monitor/ml_models/`, berasal dari *branch* `ragil` (`AI/model_kmeansV2.zip`, commit 3121cfc). Notebook di *branch* itu masih versi 4 fitur; notebook yang menghasilkan V2 belum di-*commit*.
 
 | File | Isi |
 | --- | --- |
-| `scaler.joblib` | StandardScaler untuk 4 fitur |
+| `scaler.joblib` | StandardScaler untuk 11 fitur |
 | `kmeans_model.joblib` | K-Means k=3 |
 | `label_map.joblib` | Nomor *cluster* ke Normal, Sedang, Tinggi |
 
 Langkahnya (`monitor/ai.py`):
-1. Ambil `rsr0` untuk MQ135, MQ3, MQ4, dan MQ8, lalu hitung `ln(Rs/R0)`.
+1. Susun 11 fitur dengan urutan `FEATURE_NAMES`: `ln(Rs/R0)` untuk 9 sensor (MQ135, MQ136, MQ2, MQ3, MQ4, MQ5, MQ6, MQ8, MQ9), lalu suhu dan kelembapan apa adanya.
 2. Standarisasi dengan rata-rata dan simpangan baku dari `scaler.joblib`.
 3. Pilih *centroid* terdekat, lalu ubah ke tingkat dengan `label_map.joblib`: Normal = 0, Sedang = 1, Tinggi = 2.
-4. Simpan tingkat di `Reading.level` dan versi model di `Reading.model_ver`, misalnya `kmeans-b75cc553` (8 karakter awal SHA-256 file model).
+4. Simpan tingkat di `Reading.level` dan versi model di `Reading.model_ver`, misalnya `kmeans-c3b1a99c` (8 karakter awal SHA-256 file model).
 
-Pesan dengan `rsr0` 0 atau negatif ditolak, karena `ln` tidak terdefinisi. Bila model gagal, pembacaan tetap disimpan tanpa tingkat dan galatnya dicatat di log.
+Pesan dengan `rsr0` 0 atau negatif ditolak, karena `ln` tidak terdefinisi. Pesan tanpa suhu atau kelembapan (DHT22 gagal baca) tetap disimpan, tetapi tanpa tingkat, karena model membutuhkan keduanya. Bila model gagal, pembacaan tetap disimpan tanpa tingkat dan galatnya dicatat di log.
 
-Mengganti model: timpa ketiga file dengan versi baru dari tim AI, lalu jalankan ulang *listener*. Versi model berubah otomatis. Bila fitur model berubah, `FEATURES` dan `FEATURE_NAMES` di `monitor/ai.py` juga harus diubah, karena *listener* menolak berjalan bila nama fitur *scaler* tidak cocok.
+Mengganti model: timpa ketiga file dengan versi baru dari tim AI, lalu jalankan ulang *listener*. Versi model berubah otomatis. Bila fitur model berubah, `LOG_FEATURES`, `FEATURE_NAMES`, dan `features()` di `monitor/ai.py` juga harus diubah, karena *listener* menolak berjalan bila nama fitur *scaler* tidak cocok.
 
-Hasil uji (#26): 2.160 baris TS5 menghasilkan tingkat yang sama dengan notebook AI (489 Normal, 1.118 Sedang, 553 Tinggi), dan waktu penentuan rata-rata di bawah 0,1 ms per data.
+Hasil uji V2 (24 Nov): 2.160 baris TS5 menghasilkan tingkat yang sama dengan `KMeans.predict` scikit-learn (918 Normal, 1.242 Sedang, 0 Tinggi), rata-rata 0,05 ms per data. Tidak ada satu pun baris TS5 yang menjadi Tinggi; ini perlu dicek tim AI. Model V1 (4 fitur) dulu menghasilkan 489 Normal, 1.118 Sedang, 553 Tinggi.
 
 ## Simulator
 

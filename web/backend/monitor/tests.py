@@ -10,7 +10,7 @@ import numpy as np
 from django.test import TestCase
 from rest_framework.authtoken.models import Token
 
-from .ai import FEATURES, load_model, predict_level
+from .ai import LOG_FEATURES, load_model, predict_level
 from .management.commands.run_listener import process_message
 from .management.commands.run_simulator import active_nodes, build_payload, load_dataset, reference_values
 from .models import SENSORS, Node, Reading, User
@@ -116,6 +116,7 @@ class ListenerTest(TestCase):
         self.assertIsNone(process_message('smarttps/N1/data', make_message(seq=7)))
         r = process_message('smarttps/N2/data', make_message('N2', seq=7, ts=None, suhu=None, kelembapan=None))
         self.assertIsNone(r.suhu)
+        self.assertEqual((r.level, r.model_ver), (None, ''))  # model butuh suhu dan kelembapan
         self.assertEqual(Reading.objects.count(), 2)
 
 
@@ -165,9 +166,10 @@ class ModelAITest(TestCase):
         self.assertEqual(sorted(cluster_to_level.tolist()), [0, 1, 2])
         for c, level in zip(centroids, cluster_to_level):
             # balik standarisasi dan ln: titik centroid harus jatuh ke cluster itu sendiri
-            values = np.exp(c * scale + mean)
-            rsr0 = {**{s: 1.0 for s in SENSORS}, **dict(zip(FEATURES, values))}
-            self.assertEqual(predict_level(rsr0), (int(level), version))
+            values = c * scale + mean
+            rsr0 = dict(zip(LOG_FEATURES, np.exp(values[:len(LOG_FEATURES)])))
+            suhu, kelembapan = values[len(LOG_FEATURES):]
+            self.assertEqual(predict_level(rsr0, suhu, kelembapan), (int(level), version))
         self.assertTrue(version.startswith('kmeans-'))
 
 

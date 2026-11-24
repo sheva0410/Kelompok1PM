@@ -2,6 +2,9 @@
 
 Berlangganan smarttps/+/data di Mosquitto lokal, lalu mengirim
 smarttps/<node>/level berisi {"node", "seq", "level", "model_ver"}.
+Masukan model (urutan dan cara) dibaca dari metadata ONNX: ["log", "mq135"] berarti ln(rsr0.mq135),
+["raw", "suhu"] berarti nilai suhu apa adanya. Pesan tanpa suhu/kelembapan (DHT22 gagal baca)
+tidak diberi level.
 Pesan level ikut bridge ke cloud dan disimpan Node-RED ke kolom level.
 Pemeriksaan pesan lengkap tetap dilakukan di cloud; di sini cukup yang dibutuhkan model.
 """
@@ -19,7 +22,7 @@ log = logging.getLogger('model-ai')
 
 session = ort.InferenceSession(os.environ.get('MODEL_PATH', 'kmeans.onnx'), providers=['CPUExecutionProvider'])
 meta = session.get_modelmeta().custom_metadata_map
-FEATURES = json.loads(meta['features'])
+INPUTS = json.loads(meta['inputs'])
 CLUSTER_TO_LEVEL = json.loads(meta['cluster_to_level'])
 VERSION = meta['version']
 INPUT = session.get_inputs()[0].name
@@ -30,16 +33,23 @@ def predict(topic, payload):
     parts = topic.split('/')
     try:
         data = json.loads(payload)
-        node, seq, rsr0 = data['node'], data['seq'], data['rsr0']
-        values = [rsr0[s] for s in FEATURES]
+        node, seq = data['node'], data['seq']
+        values = [data['rsr0'][key] if kind == 'log' else data.get(key) for kind, key in INPUTS]
     except (ValueError, TypeError, KeyError) as e:
         log.warning('Dilewati %s: %r', topic, e)
         return None
-    if node != parts[1] or isinstance(seq, bool) or not isinstance(seq, int) or not all(
-            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0 for v in values):
-        log.warning('Dilewati %s: node, seq, atau rsr0 tidak valid', topic)
+    if node != parts[1] or isinstance(seq, bool) or not isinstance(seq, int):
+        log.warning('Dilewati %s: node atau seq tidak valid', topic)
         return None
-    cluster = int(session.run(None, {INPUT: np.log([values], dtype=np.float64)})[0][0])
+    if any(v is None for v in values):
+        log.info('Tanpa level %s seq=%s: suhu/kelembapan kosong', node, seq)
+        return None
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in values) or any(
+            v <= 0 for v, (kind, _) in zip(values, INPUTS) if kind == 'log'):
+        log.warning('Dilewati %s: nilai sensor tidak valid', topic)
+        return None
+    x = [math.log(v) if kind == 'log' else v for v, (kind, _) in zip(values, INPUTS)]
+    cluster = int(session.run(None, {INPUT: np.array([x], dtype=np.float64)})[0][0])
     level = CLUSTER_TO_LEVEL[cluster]
     return f'smarttps/{node}/level', json.dumps({'node': node, 'seq': seq, 'level': level, 'model_ver': VERSION})
 
@@ -60,7 +70,7 @@ def on_message(client, userdata, msg):
 
 
 def main():
-    log.info('Model %s, fitur %s', VERSION, FEATURES)
+    log.info('Model %s, masukan %s', VERSION, INPUTS)
     # client id tetap dan clean_session False: Mosquitto menahan pesan selama model-ai mati
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id='smarttps-model-ai', clean_session=False)
     client.on_connect = on_connect

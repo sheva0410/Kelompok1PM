@@ -71,7 +71,7 @@ def process_message(topic, payload):
         if rsr0[s] <= 0:  # rasio Rs/R0 tidak mungkin 0 atau negatif, dan model memakai ln(Rs/R0)
             return reject(topic, f'rsr0.{s} harus lebih dari 0', payload)
 
-    # DHT22 boleh null (gagal baca). Keputusan akhirnya di issue #26.
+    # DHT22 boleh null (gagal baca); data tetap disimpan, tetapi level kosong karena model butuh keduanya.
     for k in ('suhu', 'kelembapan'):
         if data.get(k) is not None and not is_number(data[k]):
             return reject(topic, f'{k} bukan angka', payload)
@@ -94,12 +94,16 @@ def process_message(topic, payload):
         logger.info('Duplikat diabaikan %s seq=%s', node_id, seq)
         return None
 
-    try:
-        level, model_ver = predict_level(rsr0)
-    except Exception:
-        # data tetap disimpan walau model gagal, supaya pembacaan tidak hilang
-        logger.exception('Tingkat bau gagal ditentukan untuk %s seq=%s', node_id, seq)
-        level, model_ver = None, ''
+    level, model_ver = None, ''
+    if data.get('suhu') is None or data.get('kelembapan') is None:
+        # model memakai suhu dan kelembapan; tanpa keduanya level dibiarkan kosong
+        logger.info('Tingkat bau tidak ditentukan untuk %s seq=%s: suhu/kelembapan kosong', node_id, seq)
+    else:
+        try:
+            level, model_ver = predict_level(rsr0, data['suhu'], data['kelembapan'])
+        except Exception:
+            # data tetap disimpan walau model gagal, supaya pembacaan tidak hilang
+            logger.exception('Tingkat bau gagal ditentukan untuk %s seq=%s', node_id, seq)
 
     reading = Reading.objects.create(
         node=node, seq=seq, waktu=timestamp,
