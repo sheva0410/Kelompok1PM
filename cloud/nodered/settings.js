@@ -2,7 +2,7 @@
 // (cloud/.env lewat docker-compose.yml), jadi file ini dan flows boleh di-commit.
 const { Pool } = require('pg');
 const Minio = require('minio');
-const { parseReading } = require('./reading');
+const { parseReading, parseLevel } = require('./reading');
 
 const env = process.env;
 
@@ -20,6 +20,6 @@ module.exports = {
   flowFile: 'flows.json',
   // flows_cred.json hanya berisi ${NODERED_PASSWORD}, nilai aslinya dari .env
   credentialSecret: false,
-  functionGlobalContext: { pg, minio, parseReading, rawBucket: 'smarttps-raw' },
+  functionGlobalContext: { pg, minio, parseReading, parseLevel, rawBucket: 'smarttps-raw' },
   logging: { console: { level: 'info' } },
 };

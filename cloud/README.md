@@ -44,8 +44,10 @@ Flow `Data sensor` (`nodered/flows.json`):
 
 1. `mqtt in` berlangganan `smarttps/+/data` (QoS 1) dari EMQX dengan akun `nodered`.
 2. **periksa pesan**: aturan sama dengan listener Django #12, kodenya di `nodered/reading.js`. Pesan yang ditolak dicatat di log (`Ditolak ...`).
-3. **simpan ke PostgreSQL**: menolak *node* yang tidak terdaftar atau nonaktif, lalu `INSERT ... ON CONFLICT (node_id, seq) DO NOTHING` ke `monitor_reading`, jadi pesan ganda QoS 1 dilewati. Kolom `level` masih kosong; diisi dari hasil model-ai di Pi pada tahap 5.
+3. **simpan ke PostgreSQL**: menolak *node* yang tidak terdaftar atau nonaktif, lalu `INSERT ... ON CONFLICT (node_id, seq) DO NOTHING` ke `monitor_reading`, jadi pesan ganda QoS 1 dilewati. Kolom `level` diisi oleh flow berikutnya.
 4. **arsip mentah ke MinIO**: setiap pesan, termasuk yang ditolak, disimpan apa adanya ke *bucket* `smarttps-raw` dengan nama `<node>/<tanggal UTC>/<jam UTC>-<id pesan>.json`. *Bucket* dibuat otomatis saat pesan pertama.
+
+Flow `Tingkat bau`: `mqtt in` berlangganan `smarttps/+/level` dari model-ai di Pi, memeriksa pesan (`parseLevel` di `reading.js`), lalu `UPDATE monitor_reading SET level, model_ver` untuk `node` dan `seq` yang sama. Bila reading-nya belum tersimpan (level tiba lebih cepat dari INSERT data), flow mencoba lagi tiap detik sampai 10 kali.
 
 Editor: http://localhost:11880 (tanpa login, hanya bisa dibuka dari komputer ini; di VPS lewat SSH *tunnel*). Perubahan yang di-*deploy* dari editor tersimpan ke `nodered/flows.json`. Kata sandi tidak ada di repo: `flows_cred.json` hanya berisi `${NODERED_PASSWORD}`, dan `settings.js` membaca kata sandi PostgreSQL dan MinIO dari `.env`.
 

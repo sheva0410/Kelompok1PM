@@ -58,4 +58,20 @@ function parseReading(topic, payload, now = new Date()) {
   };
 }
 
-module.exports = { SENSORS, parseReading };
+// Pesan smarttps/<node>/level dari model-ai di Pi: {"node", "seq", "level", "model_ver"}
+function parseLevel(topic, payload) {
+  const fail = error => ({ error });
+  const parts = topic.split('/');
+  if (parts.length !== 3 || parts[0] !== 'smarttps' || parts[2] !== 'level') return fail('topik tidak dikenal');
+  let data;
+  try { data = JSON.parse(payload); } catch { return fail('JSON tidak valid'); }
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) return fail('payload harus objek JSON');
+  if (data.node !== parts[1]) return fail('node di payload tidak sama dengan topik');
+  if (!Number.isInteger(data.seq) || data.seq < 0 || data.seq > SEQ_MAX) return fail('seq harus bilangan bulat 0 atau lebih');
+  if (![0, 1, 2].includes(data.level)) return fail('level harus 0, 1, atau 2');
+  // panjang kolom model_ver di PostgreSQL 20
+  if (typeof data.model_ver !== 'string' || !data.model_ver || data.model_ver.length > 20) return fail('model_ver tidak valid');
+  return { level: { node: data.node, seq: data.seq, level: data.level, model_ver: data.model_ver } };
+}
+
+module.exports = { SENSORS, parseReading, parseLevel };

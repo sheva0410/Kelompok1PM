@@ -1,7 +1,7 @@
 // Jalankan: docker compose run --rm --no-deps --entrypoint node nodered /data/reading.test.js
 // Kasus diambil dari ListenerTest di web/backend/monitor/tests.py.
 const assert = require('node:assert');
-const { SENSORS, parseReading } = require('./reading');
+const { SENSORS, parseReading, parseLevel } = require('./reading');
 
 const rsr0 = changes => ({ ...Object.fromEntries(SENSORS.map(s => [s, 0.9])), ...changes });
 const message = (changes = {}) => JSON.stringify({
@@ -40,4 +40,22 @@ const invalid = [
 for (const [topic, payload] of invalid) {
   assert.ok(parseReading(topic, payload).error, `harus ditolak: ${topic} ${payload}`);
 }
-console.log(`OK: 3 pesan valid, ${invalid.length} pesan ditolak`);
+
+// pesan level dari model-ai
+const level = (changes = {}) => JSON.stringify({ node: 'N1', seq: 1, level: 2, model_ver: 'kmeans-b75cc553', ...changes });
+assert.deepStrictEqual(parseLevel('smarttps/N1/level', level()).level,
+  { node: 'N1', seq: 1, level: 2, model_ver: 'kmeans-b75cc553' });
+const invalidLevel = [
+  ['smarttps/N1/data', level()],
+  ['smarttps/N1/level', '{rusak'],
+  ['smarttps/N1/level', level({ node: 'N2' })],
+  ['smarttps/N1/level', level({ seq: -1 })],
+  ['smarttps/N1/level', level({ level: 3 })],
+  ['smarttps/N1/level', level({ level: '2' })],
+  ['smarttps/N1/level', level({ model_ver: '' })],
+  ['smarttps/N1/level', level({ model_ver: 'x'.repeat(21) })],
+];
+for (const [topic, payload] of invalidLevel) {
+  assert.ok(parseLevel(topic, payload).error, `level harus ditolak: ${topic} ${payload}`);
+}
+console.log(`OK: 3 pesan data valid, ${invalid.length} ditolak; 1 pesan level valid, ${invalidLevel.length} ditolak`);

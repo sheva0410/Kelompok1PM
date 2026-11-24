@@ -1,4 +1,4 @@
-# Edge SMART-TPS (Pi), tahap 2: Mosquitto lokal dengan bridge TLS ke EMQX di cloud.
+# Edge SMART-TPS (Pi): Mosquitto lokal dengan bridge TLS ke EMQX di cloud, dan model-ai (K-Means ONNX).
 # Jalankan dari Ubuntu (WSL) atau Pi: docker compose up -d
 name: smarttps-edge
 
@@ -24,6 +24,12 @@ services:
       - mosquitto_data:/mosquitto/data   # antrean pesan saat cloud tidak terjangkau
     extra_hosts:
       - "host.docker.internal:host-gateway"   # cloud di komputer yang sama, jaringan terpisah
+
+  model-ai:
+    build: ./model-ai
+    image: smarttps-model-ai:1
+    restart: unless-stopped
+    depends_on: [mosquitto]
 
 volumes:
   mosquitto_data:

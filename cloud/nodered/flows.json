@@ -111,5 +111,51 @@
         "wires": [
             []
         ]
+    },
+    {
+        "id": "tab-level",
+        "type": "tab",
+        "label": "Tingkat bau",
+        "disabled": false,
+        "info": "smarttps/+/level dari model-ai di Pi: isi kolom level dan model_ver pada reading yang sama (node, seq)."
+    },
+    {
+        "id": "in-level",
+        "type": "mqtt in",
+        "z": "tab-level",
+        "name": "smarttps/+/level",
+        "topic": "smarttps/+/level",
+        "qos": "1",
+        "datatype": "utf8",
+        "broker": "broker-emqx",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 80,
+        "wires": [
+            [
+                "fn-level"
+            ]
+        ]
+    },
+    {
+        "id": "fn-level",
+        "type": "function",
+        "z": "tab-level",
+        "name": "simpan level ke PostgreSQL",
+        "func": "const result = global.get('parseLevel')(msg.topic, msg.payload);\nif (result.error) {\n    node.warn(`Ditolak ${msg.topic}: ${result.error} | ${String(msg.payload).slice(0, 200)}`);\n    return null;\n}\nconst r = result.level;\nconst pg = global.get('pg');\n// level dikirim model-ai setelah data, tetapi INSERT data bisa belum selesai saat level tiba,\n// jadi coba lagi tiap detik sampai 10 kali\nfor (let i = 0; i < 10; i++) {\n    const res = await pg.query('UPDATE monitor_reading SET level = $3, model_ver = $4 WHERE node_id = $1 AND seq = $2',\n        [r.node, r.seq, r.level, r.model_ver]);\n    if (res.rowCount) {\n        node.log(`Level ${r.node} seq=${r.seq}: ${r.level} (${r.model_ver})`);\n        return null;\n    }\n    await new Promise(resolve => setTimeout(resolve, 1000));\n}\nnode.warn(`Level ${r.node} seq=${r.seq} tidak punya data di monitor_reading`);\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 390,
+        "y": 80,
+        "wires": [
+            []
+        ]
     }
 ]
