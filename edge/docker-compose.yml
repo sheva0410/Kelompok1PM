@@ -1,0 +1,71 @@
+# Edge SMART-TPS (Pi): Mosquitto lokal dengan bridge TLS ke EMQX di cloud, model-ai (K-Means ONNX),
+# dan penyimpanan lokal (Node-RED + PostgreSQL).
+# Jalankan dari Ubuntu (WSL) atau Pi: docker compose up -d
+name: smarttps-edge
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.23
+    restart: unless-stopped
+    environment:
+      BRIDGE_PASSWORD: ${BRIDGE_PASSWORD:?isi BRIDGE_PASSWORD di .env}
+      CLOUD_HOST: ${CLOUD_HOST:-host.docker.internal}
+    # Mosquitto tidak membaca variabel lingkungan, jadi kata sandi dan alamat cloud
+    # disisipkan ke salinan mosquitto.conf saat container mulai.
+    command: >-
+      sh -c "sed -e \"s|__BRIDGE_PASSWORD__|$$BRIDGE_PASSWORD|\" -e \"s|__CLOUD_HOST__|$$CLOUD_HOST|\"
+      /etc/smarttps/mosquitto.conf > /mosquitto/config/mosquitto.conf
+      && exec mosquitto -c /mosquitto/config/mosquitto.conf"
+    ports:
+      - "127.0.0.1:21883:1883"   # ESP32/simulator; 1883 di Windows sudah dipakai Mosquitto lain
+    volumes:
+      # di luar /mosquitto, karena entrypoint image melakukan chown pada /mosquitto
+      - ./mosquitto/mosquitto.conf:/etc/smarttps/mosquitto.conf:ro
+      - ./certs/ca.crt:/etc/smarttps/ca.crt:ro
+      - mosquitto_data:/mosquitto/data   # antrean pesan saat cloud tidak terjangkau
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # cloud di komputer yang sama, jaringan terpisah
+
+  model-ai:
+    build: ./model-ai
+    image: smarttps-model-ai:1
+    restart: unless-stopped
+    depends_on: [mosquitto]
+
+  postgres:
+    image: postgres:18.7-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smarttps
+      POSTGRES_USER: smarttps
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}
+    ports:
+      - "127.0.0.1:25432:5432"    # hanya dari Pi ini
+    volumes:
+      - pg_data:/var/lib/postgresql
+      - ../cloud/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro   # skema sama dengan cloud
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smarttps -d smarttps"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  nodered:
+    build: ../cloud/nodered          # image sama dengan Node-RED cloud
+    image: smarttps-nodered:5.0.10
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Jakarta
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:21880:1880"    # editor Node-RED edge, hanya dari Pi ini
+    volumes:
+      - ./nodered:/data
+      - ../cloud/nodered/reading.js:/smarttps/reading.js:ro
+    depends_on:
+      mosquitto: { condition: service_started }
+      postgres: { condition: service_healthy }
+
+volumes:
+  pg_data:
+  mosquitto_data:

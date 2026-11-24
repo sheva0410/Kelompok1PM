@@ -1,0 +1,307 @@
+{
+  "uid": "smarttps",
+  "title": "SMART-TPS",
+  "tags": [
+    "smarttps"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "1m",
+  "editable": true,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "node",
+        "label": "Node",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "smarttps-pg"
+        },
+        "query": "SELECT node_id FROM monitor_node WHERE aktif ORDER BY 1",
+        "definition": "SELECT node_id FROM monitor_node WHERE aktif ORDER BY 1",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Status node",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "smarttps-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "smarttps-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT n.node_id AS \"Node\", n.nama AS \"Nama\", r.waktu AS \"Data terakhir\",\n       round((EXTRACT(EPOCH FROM now() - r.waktu) / 60)::numeric, 1) AS \"Menit lalu\",\n       r.level AS \"Tingkat bau\", r.suhu AS \"Suhu (°C)\", r.kelembapan AS \"Kelembapan (%)\"\nFROM monitor_node n\nLEFT JOIN LATERAL (SELECT * FROM monitor_reading WHERE node_id = n.node_id ORDER BY waktu DESC LIMIT 1) r ON true\nWHERE n.aktif\nORDER BY n.node_id"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Menit lalu"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tingkat bau"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Normal",
+                        "color": "green",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "Sedang",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "Tinggi",
+                        "color": "red",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Tingkat bau per node",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "smarttps-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "smarttps-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT waktu AS time, node_id AS metric, level AS value\nFROM monitor_reading\nWHERE $__timeFilter(waktu) AND level IS NOT NULL\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 2,
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Normal",
+                  "color": "green",
+                  "index": 0
+                },
+                "1": {
+                  "text": "Sedang",
+                  "color": "orange",
+                  "index": 1
+                },
+                "2": {
+                  "text": "Tinggi",
+                  "color": "red",
+                  "index": 2
+                }
+              }
+            }
+          ],
+          "custom": {
+            "lineInterpolation": "stepAfter",
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Rs/R0 sensor gas, node $node",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "smarttps-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 16,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "smarttps-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT waktu AS time, mq2, mq3, mq4, mq5, mq6, mq8, mq9, mq135, mq136\nFROM monitor_reading\nWHERE node_id = '$node' AND $__timeFilter(waktu)\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Suhu dan kelembapan, node $node",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "smarttps-pg"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 14,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "smarttps-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT waktu AS time, suhu AS \"Suhu (°C)\", kelembapan AS \"Kelembapan (%)\"\nFROM monitor_reading\nWHERE node_id = '$node' AND $__timeFilter(waktu)\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    }
+  ]
+}

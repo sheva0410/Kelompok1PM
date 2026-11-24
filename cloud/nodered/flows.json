@@ -1,0 +1,161 @@
+[
+    {
+        "id": "tab-data",
+        "type": "tab",
+        "label": "Data sensor",
+        "disabled": false,
+        "info": "smarttps/+/data dari EMQX: diperiksa lalu disimpan ke PostgreSQL (data panas), salinan mentah ke MinIO."
+    },
+    {
+        "id": "broker-emqx",
+        "type": "mqtt-broker",
+        "name": "EMQX",
+        "broker": "emqx",
+        "port": "1883",
+        "clientid": "smarttps-nodered",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": false,
+        "autoUnsubscribe": false,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "in-data",
+        "type": "mqtt in",
+        "z": "tab-data",
+        "name": "smarttps/+/data",
+        "topic": "smarttps/+/data",
+        "qos": "1",
+        "datatype": "utf8",
+        "broker": "broker-emqx",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 100,
+        "wires": [
+            [
+                "fn-check",
+                "fn-archive"
+            ]
+        ]
+    },
+    {
+        "id": "fn-check",
+        "type": "function",
+        "z": "tab-data",
+        "name": "periksa pesan",
+        "func": "const result = global.get('parseReading')(msg.topic, msg.payload);\nif (result.error) {\n    node.warn(`Ditolak ${msg.topic}: ${result.error} | ${String(msg.payload).slice(0, 200)}`);\n    return null;\n}\nmsg.reading = result.reading;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 80,
+        "wires": [
+            [
+                "fn-save"
+            ]
+        ]
+    },
+    {
+        "id": "fn-save",
+        "type": "function",
+        "z": "tab-data",
+        "name": "simpan ke PostgreSQL",
+        "func": "const result = await global.get('saveReading')(global.get('pg'), msg.reading);\nif (result.warn) node.warn(`Ditolak ${msg.topic}: ${result.warn}`);\nelse node.log(result.log);\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 590,
+        "y": 80,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "fn-archive",
+        "type": "function",
+        "z": "tab-data",
+        "name": "arsip mentah ke MinIO",
+        "func": "// Salinan setiap pesan apa adanya (termasuk yang ditolak), bahan latih ulang model.\n// ponytail: satu objek per pesan (~5.760/hari untuk 4 node); gabung per jam ke JSONL bila jumlah objek jadi masalah\nconst minio = global.get('minio');\nconst bucket = global.get('rawBucket');\nconst received = new Date().toISOString();\nconst node_id = msg.topic.split('/')[1];\nconst key = `${node_id}/${received.slice(0, 10)}/${received.slice(11, 23).replace(/:/g, '')}-${msg._msgid}.json`;\nconst body = Buffer.from(msg.payload);\nconst meta = { 'Content-Type': 'application/json', 'x-amz-meta-topic': msg.topic, 'x-amz-meta-received': received };\ntry {\n    await minio.putObject(bucket, key, body, body.length, meta);\n} catch (err) {\n    if (err.code !== 'NoSuchBucket') throw err;\n    // pesan pertama bisa datang bersamaan, jadi bucket mungkin sudah dibuat pesan lain\n    await minio.makeBucket(bucket).catch(e => { if (e.code !== 'BucketAlreadyOwnedByYou') throw e; });\n    await minio.putObject(bucket, key, body, body.length, meta);\n}\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 140,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "tab-level",
+        "type": "tab",
+        "label": "Tingkat bau",
+        "disabled": false,
+        "info": "smarttps/+/level dari model-ai di Pi: isi kolom level dan model_ver pada reading yang sama (node, seq)."
+    },
+    {
+        "id": "in-level",
+        "type": "mqtt in",
+        "z": "tab-level",
+        "name": "smarttps/+/level",
+        "topic": "smarttps/+/level",
+        "qos": "1",
+        "datatype": "utf8",
+        "broker": "broker-emqx",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 80,
+        "wires": [
+            [
+                "fn-level"
+            ]
+        ]
+    },
+    {
+        "id": "fn-level",
+        "type": "function",
+        "z": "tab-level",
+        "name": "simpan level ke PostgreSQL",
+        "func": "const parsed = global.get('parseLevel')(msg.topic, msg.payload);\nif (parsed.error) {\n    node.warn(`Ditolak ${msg.topic}: ${parsed.error} | ${String(msg.payload).slice(0, 200)}`);\n    return null;\n}\nconst result = await global.get('saveLevel')(global.get('pg'), parsed.level);\nif (result.warn) node.warn(result.warn);\nelse node.log(result.log);\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 390,
+        "y": 80,
+        "wires": [
+            []
+        ]
+    }
+]

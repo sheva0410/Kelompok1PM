@@ -1,0 +1,91 @@
+# Alert ke Telegram. ${VAR} diisi dari variabel lingkungan; $labels dan $values adalah template alert.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Telegram
+    receivers:
+      - uid: telegram
+        type: telegram
+        settings:
+          bottoken: ${TELEGRAM_BOT_TOKEN}
+          chatid: "${TELEGRAM_CHAT_ID}"
+
+policies:
+  - orgId: 1
+    receiver: Telegram
+    group_by: [alertname, node_id]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: SMART-TPS
+    folder: SMART-TPS
+    interval: 1m
+    rules:
+      - uid: node-offline
+        title: Node tidak mengirim data
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: smarttps-pg
+            model:
+              refId: A
+              format: table
+              editorMode: code
+              rawQuery: true
+              # node aktif tanpa data sama sekali dihitung 99999 menit
+              rawSql: |
+                SELECT n.node_id,
+                       coalesce(EXTRACT(EPOCH FROM now() - max(r.waktu)) / 60, 99999) AS minutes
+                FROM monitor_node n LEFT JOIN monitor_reading r ON r.node_id = n.node_id
+                WHERE n.aktif
+                GROUP BY n.node_id
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [5] }   # data dikirim tiap menit
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Node {{ $labels.node_id }} tidak mengirim data selama {{ printf \"%.0f\" $values.A.Value }} menit"
+
+      - uid: odor-high
+        title: Tingkat bau Tinggi
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: smarttps-pg
+            model:
+              refId: A
+              format: table
+              editorMode: code
+              rawQuery: true
+              # level terakhir tiap node dalam 10 menit terakhir (0 Normal, 1 Sedang, 2 Tinggi)
+              rawSql: |
+                SELECT DISTINCT ON (node_id) node_id, level
+                FROM monitor_reading
+                WHERE waktu > now() - interval '10 minutes' AND level IS NOT NULL
+                ORDER BY node_id, waktu DESC
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Tingkat bau di node {{ $labels.node_id }} Tinggi"

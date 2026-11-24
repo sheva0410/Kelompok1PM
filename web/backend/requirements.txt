@@ -1,0 +1,9 @@
+Django==6.0.3
+djangorestframework==3.17.1
+django-cors-headers==4.9.0
+psycopg2-binary==2.9.11
+pillow==12.3.0
+paho-mqtt==2.2.0
+scikit-learn==1.9.1
+joblib==1.5.2
+numpy==2.5.4

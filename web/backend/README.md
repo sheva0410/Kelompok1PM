@@ -22,14 +22,15 @@ Daftar perbedaan dengan kode lama ada di [Daftar_Perubahan_Backend_SMART-TPS.txt
 | --- | --- |
 | *Framework* | Django 5, Django REST Framework (*token authentication*) |
 | *Database* | PostgreSQL 15 |
-| MQTT *client* | paho-mqtt, dijalankan sebagai *management command* `run_listener` |
-| Model AI | K-Means k=3 dan *scaler* (scikit-learn), dimuat dengan joblib |
-| *Deployment* | Docker Compose: `db`, `web` (gunicorn), `listener`, `nginx` |
+| MQTT *client* | paho-mqtt 2.2, dijalankan sebagai *management command* `run_listener` |
+| MQTT *broker* | Mosquitto (Docker Compose), TLS port 8883 |
+| Model AI | K-Means k=3 dan *scaler* dari tim AI (V2), scikit-learn 1.9.1 (sama dengan versi pelatihan), dimuat dengan joblib |
+| *Deployment* | Docker Compose di VPS Azure for Students: `mosquitto`, `db`, `web` (gunicorn), `listener`, `nginx`, `n8n` |
 | Notifikasi | *Webhook* ke n8n |
 
 ## Data sensor
 
-Tiap *node* mengirim **11 data sensor** per pembacaan. Kesebelas data ini disimpan dan dipakai sebagai fitur K-Means.
+Tiap *node* mengirim **11 data sensor** per pembacaan. Kesebelas data ini disimpan. Model K-Means dari tim AI (#17, V2) memakai kesebelasnya.
 
 | Data | Jumlah | Satuan |
 | --- | --- | --- |
@@ -48,7 +49,7 @@ Tiap *node* mengirim **11 data sensor** per pembacaan. Kesebelas data ini disimp
 
 *Listener* berlangganan `smarttps/+/data` dan `smarttps/+/status`. Tiap *node* login ke *broker* dengan nama pengguna dan kata sandi sendiri.
 
-Contoh *payload*. Format final menunggu issue #5, dan angka di bawah hanya ilustrasi:
+Format *payload* sudah disetujui di issue #5 ([Format_Payload_MQTT_SMART-TPS.txt](../../dokumentasi/Format_Payload_MQTT_SMART-TPS.txt)). Angka di bawah hanya ilustrasi:
 
 ```json
 {
@@ -103,7 +104,7 @@ Relasi: satu `NODE` punya banyak `READING`, `R0_CONFIG`, dan `NOTIFICATION`. Sat
 
 | Aturan | Isi |
 | --- | --- |
-| Tingkat bau | K-Means memilih rendah, sedang, atau tinggi dari 11 data sensor |
+| Tingkat bau | K-Means memilih Normal, Sedang, atau Tinggi dari 9 sensor MQ, suhu, dan kelembapan |
 | Status TPS | Ikut *node* aktif yang tingkatnya paling tinggi |
 | Tren | Dilihat dari 15 prediksi terakhir: naik, stabil, atau turun |
 | *Node offline* | Tidak mengirim data lebih dari 3 menit |
@@ -122,10 +123,13 @@ Nilai rahasia disimpan di file `.env` yang tidak ikut di-*commit*. Jangan tulis 
 | `ALLOWED_HOSTS` | *Host* yang diizinkan, dipisah koma | Dari kode lama |
 | `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` | Origin *dashboard web* dan aplikasi, dipisah koma | Baru |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Koneksi PostgreSQL. `DB_HOST` kosong berarti SQLite lokal | Dari kode lama |
-| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS` | Koneksi *broker* untuk *listener* | Baru |
+| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS` | Koneksi *broker* untuk *listener*. Port bawaan 8883 (`tcp`) atau 443 (`websockets`) | Baru (#12) |
+| `MQTT_TRANSPORT` | `tcp` (bawaan) atau `websockets` (cadangan bila port 8883 tidak bisa dipakai) | Baru |
+| `MQTT_WS_PATH` | Path WebSocket Mosquitto, bawaan `/mqtt` | Baru |
+| `MQTT_TLS` | `1` untuk TLS atau `wss` (bawaan), `0` untuk *broker* lokal tanpa TLS | Baru (#12) |
 | `N8N_WEBHOOK_URL` | URL *webhook* n8n | Baru |
 
-Nama variabel yang ditandai "Baru" masih usulan. Variabel itu ditetapkan saat issue #12 dan #29 dikerjakan.
+Variabel MQTT sudah ditetapkan di issue #12. `N8N_WEBHOOK_URL` masih usulan dan ditetapkan di issue #29.
 
 ## Menjalankan
 
@@ -138,18 +142,82 @@ docker compose exec web python manage.py migrate
 docker compose exec web python manage.py createsuperuser
 ```
 
-Uji tanpa alat dilakukan dengan simulator yang mengirim data TS5 untuk N1-N4 (issue #13).
+Menjalankan *listener* tanpa Docker:
+
+```bash
+pip install -r requirements.txt
+python manage.py run_listener
+```
+
+Pesan yang ditolak dicatat sebagai `WARNING` beserta alasannya. Pesan dengan `seq` yang sudah tersimpan untuk *node* yang sama diabaikan sebagai duplikat.
+
+## Model AI
+
+*Listener* menentukan tingkat bau setiap pesan sebelum menyimpannya (#26). File model ada di `monitor/ml_models/`, berasal dari *branch* `ragil` (`AI/model_kmeansV2.zip`, commit 3121cfc). Notebook di *branch* itu masih versi 4 fitur; notebook yang menghasilkan V2 belum di-*commit*.
+
+| File | Isi |
+| --- | --- |
+| `scaler.joblib` | StandardScaler untuk 11 fitur |
+| `kmeans_model.joblib` | K-Means k=3 |
+| `label_map.joblib` | Nomor *cluster* ke Normal, Sedang, Tinggi |
+
+Langkahnya (`monitor/ai.py`):
+1. Susun 11 fitur dengan urutan `FEATURE_NAMES`: `ln(Rs/R0)` untuk 9 sensor (MQ135, MQ136, MQ2, MQ3, MQ4, MQ5, MQ6, MQ8, MQ9), lalu suhu dan kelembapan apa adanya.
+2. Standarisasi dengan rata-rata dan simpangan baku dari `scaler.joblib`.
+3. Pilih *centroid* terdekat, lalu ubah ke tingkat dengan `label_map.joblib`: Normal = 0, Sedang = 1, Tinggi = 2.
+4. Simpan tingkat di `Reading.level` dan versi model di `Reading.model_ver`, misalnya `kmeans-c3b1a99c` (8 karakter awal SHA-256 file model).
+
+Pesan dengan `rsr0` 0 atau negatif ditolak, karena `ln` tidak terdefinisi. Pesan tanpa suhu atau kelembapan (DHT22 gagal baca) tetap disimpan, tetapi tanpa tingkat, karena model membutuhkan keduanya. Bila model gagal, pembacaan tetap disimpan tanpa tingkat dan galatnya dicatat di log.
+
+Mengganti model: timpa ketiga file dengan versi baru dari tim AI, lalu jalankan ulang *listener*. Versi model berubah otomatis. Bila fitur model berubah, `LOG_FEATURES`, `FEATURE_NAMES`, dan `features()` di `monitor/ai.py` juga harus diubah, karena *listener* menolak berjalan bila nama fitur *scaler* tidak cocok.
+
+Hasil uji V2 (24 Nov): 2.160 baris TS5 menghasilkan tingkat yang sama dengan `KMeans.predict` scikit-learn (918 Normal, 1.242 Sedang, 0 Tinggi), rata-rata 0,05 ms per data. Tidak ada satu pun baris TS5 yang menjadi Tinggi; ini perlu dicek tim AI. Model V1 (4 fitur) dulu menghasilkan 489 Normal, 1.118 Sedang, 553 Tinggi.
+
+## Simulator
+
+Simulator mengirim dataset TS5 sebagai pesan MQTT dari N1-N4, jadi *listener* bisa diuji tanpa alat. File `TS5.csv` tidak ada di repo. Simpan di komputer, lalu tunjuk dengan `--dataset` atau variabel `SIMULATOR_DATASET`.
+
+Syarat: `MQTT_*` di `.env` terisi (sama dengan *listener*), *listener* sedang berjalan, dan N1-N4 sudah terdaftar di `/admin`.
+
+```bash
+# uji cepat: 1 detik antar siklus
+python manage.py run_simulator --dataset D:/data/TS5.csv --interval 1
+
+# uji normal: 60 detik antar siklus (bawaan)
+python manage.py run_simulator --dataset D:/data/TS5.csv
+
+# 100 pesan (25 siklus x 4 node) lalu berhenti
+python manage.py run_simulator --dataset D:/data/TS5.csv --cycles 25 --interval 0.05
+
+# matikan N3 setelah 10 siklus, untuk uji node offline
+python manage.py run_simulator --dataset D:/data/TS5.csv --off N3 --off-after 10
+```
+
+| Opsi | Fungsi | Bawaan |
+| --- | --- | --- |
+| `--dataset` | Path `TS5.csv` | `SIMULATOR_DATASET`, atau `TS5.csv` di folder kerja |
+| `--interval` | Detik antar siklus | 60 |
+| `--cycles` | Jumlah siklus, 0 berarti tanpa batas | 0 |
+| `--node` | *Node* yang disimulasikan | N1 N2 N3 N4 |
+| `--off`, `--off-after` | *Node* yang berhenti mengirim, dan setelah berapa siklus | tidak ada, 5 |
+| `--seq-start` | Nomor `seq` pertama tiap *node*. Ubah bila `seq` yang sama sudah tersimpan | 1 |
+
+Cara kerja:
+- Kolom dibaca menurut nama (`MQ2`, `MQ135`, `Temperature`, `Humidity`), karena urutan kolom antar file TS berbeda.
+- Tiap *node* mulai dari baris yang berbeda (N1 baris 1, N2 baris 541, dan seterusnya), lalu berputar ke awal bila dataset habis.
+- Setiap siklus tiap *node* mengirim satu baris ke `smarttps/{node}/data` dengan QoS 1, memakai format di `dokumentasi/Format_Payload_MQTT_SMART-TPS.txt`.
+- Nilai sensor dibagi nilai acuan, yaitu median menit 1-60 dataset, lalu dikirim pada kunci `rsr0`. Ini sama dengan langkah *preprocessing* tim AI, jadi tingkat bau dari *backend* sama dengan hasil notebook.
+- *Node* yang dimatikan hanya berhenti mengirim. Deteksi *offline* dikerjakan di #28.
 
 ## Keputusan yang masih terbuka
 
 | No | Keputusan | Pilihan | Terkait |
 | --- | --- | --- | --- |
-| 1 | Nama tingkat bau | rendah/sedang/tinggi (proposal, README utama) atau Normal/Sedang/Tinggi (issue AI) | #11, #26 |
-| 2 | Format final *payload* | Contoh di atas, termasuk `suhu` dan `kelembapan` | #5 |
-| 3 | `seq` kembali ke 0 saat ESP32 *restart* | Firmware menyimpan `seq` di NVS, atau *payload* ditambah `boot_id` | #5, #11 |
-| 4 | Data pelapor dan foto laporan warga | Warga anonim, atau warga punya akun (tambah peran warga) | #11 |
-| 5 | DHT22 gagal membaca | Pembacaan ditolak, atau disimpan tanpa prediksi | #12, #26 |
-| 6 | Penyedia *cloud* | Belum dipilih | #37 |
+| 1 | Nama tingkat bau | rendah/sedang/tinggi (proposal, README utama, label `Reading.Level` saat ini) atau Normal/Sedang/Tinggi (model AI, issue #17 dan #26). Nilai yang disimpan tetap 0, 1, 2 | #11, #26 |
+| 2 | `seq` kembali ke 0 saat ESP32 *restart* | Firmware menyimpan `seq` di NVS, atau *payload* ditambah `boot_id` | #5, #11 |
+| 3 | Data pelapor dan foto laporan warga | Warga anonim, atau warga punya akun (tambah peran warga) | #11 |
+| 4 | Nilai acuan (R0) di firmware | Model dilatih dengan acuan = median menit 1-60 data segar. Di lapangan acuannya R0 udara bersih. Kesetaraannya perlu dicek tim AI dan HW | #24, #42 |
+| 5 | Ukuran dan *region* VPS Azure for Students | Dipilih: Azure for Students. Ukuran VM dan *region* yang diizinkan perlu dicek | #37 |
 
 ## Issue backend
 

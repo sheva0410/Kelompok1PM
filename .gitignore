@@ -10,6 +10,11 @@ secrets.h
 secrets.json
 credentials.json
 
+# Docker cloud/edge: sertifikat dan akun MQTT buatan cloud/setup.sh
+cloud/certs/
+cloud/emqx/accounts.csv
+edge/certs/
+
 # Firmware: SSID dan kata sandi Wi-Fi
 **/wifi_config.h
 
@@ -32,3 +37,9 @@ staticfiles/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Node-RED cloud dan edge: berkas runtime di userDir
+*/nodered/.*
+*/nodered/lib/
+*/nodered/node_modules/
+*/nodered/package*.json

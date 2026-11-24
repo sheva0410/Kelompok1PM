@@ -1,0 +1,6 @@
+{
+    "broker-emqx": {
+        "user": "nodered",
+        "password": "${NODERED_PASSWORD}"
+    }
+}

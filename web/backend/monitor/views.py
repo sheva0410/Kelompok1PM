@@ -11,19 +11,20 @@ from rest_framework.views import APIView
 from .models import SENSORS, Reading, User
 
 
-class IsPengelolaOrAdmin(permissions.BasePermission):
+class IsManagerOrAdmin(permissions.BasePermission):
+    """Hanya pengelola, admin, atau superuser."""
     def has_permission(self, request, view):
         u = request.user
         return bool(u and u.is_authenticated and (u.is_superuser or u.role in (User.Role.PENGELOLA, User.Role.ADMIN)))
 
 
-def parse_waktu(value, name, akhir=False):
+def parse_datetime_param(value, name, end_of_day=False):
     """Terima YYYY-MM-DD atau datetime ISO 8601. Tanggal saja pada 'to' berarti sampai akhir hari itu."""
     if not value:
         return None
     # Cek tanggal dulu: parse_datetime juga menerima "YYYY-MM-DD" sebagai jam 00:00
     d = parse_date(value)
-    dt = datetime.combine(d, time.max if akhir else time.min) if d else parse_datetime(value)
+    dt = datetime.combine(d, time.max if end_of_day else time.min) if d else parse_datetime(value)
     if dt is None:
         raise ValidationError({name: 'Format waktu harus YYYY-MM-DD atau ISO 8601.'})
     return timezone.make_aware(dt) if timezone.is_naive(dt) else dt
@@ -31,17 +32,17 @@ def parse_waktu(value, name, akhir=False):
 
 # GET /api/export?from=&to=&node=  (Tabel 5.2, FR-12)
 class ExportCSVView(APIView):
-    permission_classes = [IsPengelolaOrAdmin]
+    permission_classes = [IsManagerOrAdmin]
 
     def get(self, request):
         qs = Reading.objects.select_related('node').order_by('waktu')
-        mulai = parse_waktu(request.query_params.get('from'), 'from')
-        sampai = parse_waktu(request.query_params.get('to'), 'to', akhir=True)
+        start = parse_datetime_param(request.query_params.get('from'), 'from')
+        end = parse_datetime_param(request.query_params.get('to'), 'to', end_of_day=True)
         node = request.query_params.get('node')
-        if mulai:
-            qs = qs.filter(waktu__gte=mulai)
-        if sampai:
-            qs = qs.filter(waktu__lte=sampai)
+        if start:
+            qs = qs.filter(waktu__gte=start)
+        if end:
+            qs = qs.filter(waktu__lte=end)
         if node:
             qs = qs.filter(node_id=node)
 

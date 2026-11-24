@@ -1,0 +1,123 @@
+# Cloud SMART-TPS: gerbang MQTT (EMQX), Node-RED (pemroses data), PostgreSQL (data panas),
+# MinIO (data mentah), Grafana (dashboard dan alert Telegram).
+# Jalankan dari Ubuntu (WSL) atau VPS: docker compose up -d
+name: smarttps-cloud
+
+services:
+  emqx:
+    image: emqx/emqx:6.3.3
+    restart: unless-stopped
+    hostname: node1.emqx.smarttps
+    environment:
+      # nama node tetap; tanpa ini nama memakai IP container yang bisa berubah,
+      # padahal data EMQX (akun MQTT, sesi) terikat ke nama node
+      EMQX_NODE__NAME: emqx@node1.emqx.smarttps
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?isi EMQX_DASHBOARD_PASSWORD di .env}
+      # TLS dengan sertifikat sendiri (dibuat setup.sh)
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/smarttps/certs/server.crt
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/smarttps/certs/server.key
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: /opt/emqx/etc/smarttps/certs/ca.crt
+      # wajib login; akun awal dimuat dari accounts.csv saat database akun masih kosong
+      EMQX_AUTHENTICATION__1__MECHANISM: password_based
+      EMQX_AUTHENTICATION__1__BACKEND: built_in_database
+      EMQX_AUTHENTICATION__1__USER_ID_TYPE: username
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_FILE: /opt/emqx/etc/smarttps/accounts.csv
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_TYPE: plain
+      # sesi persisten Node-RED: pesan QoS 1 ditahan selama Node-RED mati, sampai 10.000 pesan
+      # (sekitar 41 jam untuk 4 node) dan paling lama 2 hari
+      EMQX_MQTT__MAX_MQUEUE_LEN: 10000
+      EMQX_MQTT__SESSION_EXPIRY_INTERVAL: 2d
+      EMQX_DURABLE_SESSIONS__ENABLE: "true"
+    ports:
+      - "8883:8883"               # MQTT TLS, untuk bridge dari Mosquitto di Pi
+      - "127.0.0.1:18083:18083"   # dashboard EMQX, hanya dari komputer ini
+      - "127.0.0.1:11883:1883"    # MQTT tanpa TLS, hanya untuk uji lokal
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - ./certs:/opt/emqx/etc/smarttps/certs:ro
+      - ./emqx/accounts.csv:/opt/emqx/etc/smarttps/accounts.csv:ro
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: postgres:18.7-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smarttps
+      POSTGRES_USER: smarttps
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?isi GRAFANA_DB_PASSWORD di .env}   # untuk 02-grafana-user.sh
+    ports:
+      - "127.0.0.1:15432:5432"    # hanya dari komputer ini; 5432 sudah dipakai PostgreSQL Windows
+    volumes:
+      - pg_data:/var/lib/postgresql   # PostgreSQL 18 menyimpan data di bawah folder ini
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./postgres/02-grafana-user.sh:/docker-entrypoint-initdb.d/02-grafana-user.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smarttps -d smarttps"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  minio:
+    # MinIO berhenti merilis image Docker resmi sejak Oktober 2025. Image Chainguard dibangun
+    # dari kode sumber MinIO; hanya tag latest yang gratis, jadi dipatok dengan digest.
+    image: cgr.dev/chainguard/minio@sha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec  # RELEASE.2026-11-16T00-11-40Z
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: smarttps
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?isi MINIO_ROOT_PASSWORD di .env}
+    ports:
+      - "127.0.0.1:19001:9001"    # konsol MinIO, hanya dari komputer ini
+    volumes:
+      - minio_data:/data
+
+  nodered:
+    build: ./nodered
+    image: smarttps-nodered:5.0.10
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Jakarta
+      NODERED_PASSWORD: ${NODERED_PASSWORD:?isi NODERED_PASSWORD di .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MINIO_ROOT_USER: smarttps
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:11880:1880"    # editor Node-RED, hanya dari komputer ini
+    volumes:
+      - ./nodered:/data           # flows dan settings dari repo; perubahan di editor tersimpan ke sini
+    depends_on:
+      emqx: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      minio: { condition: service_started }
+
+  grafana:
+    image: grafana/grafana:13.3.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?isi GRAFANA_ADMIN_PASSWORD di .env}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD}
+      # dari @BotFather dan chat tujuan; tanpa ini alert tetap dievaluasi tetapi gagal terkirim
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-belum-diisi}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-0}
+    ports:
+      - "127.0.0.1:13000:3000"    # dashboard Grafana, hanya dari komputer ini
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  grafana_data:
+  emqx_data:
+  pg_data:
+  minio_data:
